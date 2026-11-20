@@ -1075,6 +1075,7 @@ static int settings_file_cache = 1;      /* cache folder listings (mtime-keyed) 
 static int settings_battery_color = 0;   /* "Nel Battery Mode": solid color light by level instead of fill bar */
 static int settings_stock_battery = 1;   /* cubevol's original fb1 indicator */
 static int settings_game_switcher = 1;  /* recents as box-art carousel: 0=off, 1=on */
+static int settings_graphical_home = 0;
 static int settings_apps_in_settings = 0;
 static int settings_rounded_screenshots = 0;
 static int settings_language;
@@ -1187,7 +1188,7 @@ typedef struct {
 } SRow;
 
 static const SRow settings_rows[] = {
-    { RT_HEADER, "settings.appearance" }, { RT_UI_THEME, "UI theme" }, { RT_THEME_PACK, "settings.background_theme_pack" }, { RT_SETTINGS_LAYOUT, "Settings style" }, { RT_TOGGLE, "Decorative pills", &settings_pillboxes }, { RT_ICON_PACK, "settings.icon_pack" }, { RT_TOGGLE, "settings.center_text", &settings_center_text }, { RT_TOGGLE, "settings.friendly_system_names", &settings_friendly_names }, { RT_FONT, "settings.font" }, { RT_RANGE, "settings.font_size", &settings_font_size, 18, 26, 1 }, { RT_TOGGLE, "settings.battery_colour_mode", &settings_battery_color }, { RT_TOGGLE, "settings.stock_battery_indicator", &settings_stock_battery }, { RT_TOGGLE, "settings.background_images", &settings_backgrounds }, { RT_RANGE, "settings.background_dim", &settings_background_dim, 0, 100, 5 }, { RT_WALLPAPER, "settings.wallpaper" }, { RT_WALLFIT, "settings.background_image_fit" },
+    { RT_HEADER, "settings.appearance" }, { RT_UI_THEME, "UI theme" }, { RT_THEME_PACK, "settings.background_theme_pack" }, { RT_SETTINGS_LAYOUT, "Settings style" }, { RT_TOGGLE, "Enhanced graphical platform home", &settings_graphical_home }, { RT_TOGGLE, "Decorative pills", &settings_pillboxes }, { RT_ICON_PACK, "settings.icon_pack" }, { RT_TOGGLE, "settings.center_text", &settings_center_text }, { RT_TOGGLE, "settings.friendly_system_names", &settings_friendly_names }, { RT_FONT, "settings.font" }, { RT_RANGE, "settings.font_size", &settings_font_size, 18, 26, 1 }, { RT_TOGGLE, "settings.battery_colour_mode", &settings_battery_color }, { RT_TOGGLE, "settings.stock_battery_indicator", &settings_stock_battery }, { RT_TOGGLE, "settings.background_images", &settings_backgrounds }, { RT_RANGE, "settings.background_dim", &settings_background_dim, 0, 100, 5 }, { RT_WALLPAPER, "settings.wallpaper" }, { RT_WALLFIT, "settings.background_image_fit" },
     { RT_HEADER, "settings.general" }, { RT_LANGUAGE, "settings.language", &settings_language }, { RT_RANGE, "settings.brightness", &settings_brightness, 0, 100, SETTINGS_BRIGHTNESS_STEP }, { RT_TOGGLE, "settings.animations", &settings_anim }, { RT_TOGGLE, "settings.menu_sounds", &settings_menu_sounds }, { RT_TOGGLE, "settings.hide_extensions", &settings_hide_extensions }, { RT_TOGGLE, "settings.hide_empty_folders", &settings_hide_empty },
     { RT_HEADER, "settings.library" }, { RT_TOGGLE, "Apps in Settings", &settings_apps_in_settings }, { RT_OPEN_APPS, "Open Apps" }, { RT_ROM_SOURCE, "settings.rom_source" }, { RT_OTG_STATUS, "settings.otg_storage" }, { RT_TOGGLE, "settings.game_switcher", &settings_game_switcher }, { RT_TOGGLE, "Rounded recents screenshots", &settings_rounded_screenshots }, { RT_TOGGLE, "settings.start_in_recents", &settings_load_recents },
     { RT_HEADER, "settings.gameplay" }, { RT_TOGGLE, "settings.quick_resume", &settings_quick_resume }, { RT_TOGGLE, "settings.autosave_autoload", &settings_autosave_autoload }, { RT_TOGGLE, "settings.custom_aspect_ratios", &settings_custom_aspect_ratios },
@@ -1671,6 +1672,7 @@ static void settings_preview_row(const SRow *r) {
 }
 
 static void settings_load_file(void) {
+    settings_graphical_home = 0;
     settings_override_meta_loaded = 0;
     settings_overrides.mask = 0;
     int settings_profile_version = 0;
@@ -1800,6 +1802,8 @@ static void settings_load_file(void) {
             settings_hide_extensions = (strcmp(val, "on") == 0) ? 1 : 0;
         } else if (strcmp(line, "backgrounds") == 0) {
             settings_backgrounds = (strcmp(val, "on") == 0) ? 1 : 0;
+        } else if (strcmp(line, "graphical_home") == 0) {
+            settings_graphical_home = (strcmp(val, "on") == 0) ? 1 : 0;
         } else if (strcmp(line, "background_dim") == 0) {
             settings_background_dim = atoi(val);
         } else if (strcmp(line, "file_cache") == 0) {
@@ -1996,6 +2000,7 @@ static void settings_save_file(void) {
     fprintf(f, "hide_empty=%s\n", onoff_names[settings_hide_empty]);
     fprintf(f, "hide_extensions=%s\n", onoff_names[settings_hide_extensions]);
     fprintf(f, "backgrounds=%s\n", onoff_names[settings_backgrounds]);
+    fprintf(f, "graphical_home=%s\n", onoff_names[settings_graphical_home]);
     fprintf(f, "background_dim=%d\n", settings_background_dim);
     fprintf(f, "file_cache=%s\n", onoff_names[settings_file_cache]);
     fprintf(f, "battery_color=%s\n", onoff_names[settings_battery_color]);
@@ -2690,6 +2695,18 @@ static void scan_directory(const char *path) {
      * folder names so toggling friendly labels never needs cache invalidation. */
     if (at_root && settings_friendly_names && entry_count > 1)
         qsort(entries, entry_count, sizeof(DirEntry), system_direntry_cmp);
+    /* Enhanced platform home is a systems collection view.  Keep the raw
+     * directory/cache untouched, but hide loose root files from this
+     * presentation so A always enters a platform collection. */
+    if (at_root && settings_graphical_home && entry_count > 0) {
+        int write = 0;
+        for (int read = 0; read < entry_count; read++) {
+            if (!entries[read].is_dir) continue;
+            if (write != read) entries[write] = entries[read];
+            write++;
+        }
+        entry_count = write;
+    }
     /* Favourites remains part of the Games library. Recents and Settings are
      * real top-level tabs and must never appear as fake system folders. */
     if (strcmp(path, ROMS_PATH) == 0) {
@@ -3087,6 +3104,11 @@ static void render_boxart_panel(uint16_t *fb, const char *full_path, const char 
     int tw = (int)strlen(nm) * UI_S(8);
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, px + (pw - tw) / 2, top + ah + UI_S(4),
                    nm, COLOR_TEXT);
+}
+
+static bool start_in_recents(void) {
+    return !settings_graphical_home && settings_load_recents &&
+           recent_games_get_count() > 0;
 }
 
 /* Switch the browser into the recents view (used by the Recents entry and, when
@@ -4484,14 +4506,14 @@ static void handle_settings_menu(void) {
 }
 
 static bool horizontal_system_view(void) {
-    return settings_explore_layout == STYLE_HORIZONTAL &&
+    return !settings_graphical_home && settings_explore_layout == STYLE_HORIZONTAL &&
            strcmp(current_path, ROMS_PATH) == 0 &&
            !viewing_recents && !viewing_favourites && !viewing_apps &&
            !apps_browsing && !viewing_search;
 }
 
 static bool icon_system_view(void) {
-    return settings_explore_layout == STYLE_SYSTEM &&
+    return (settings_graphical_home || settings_explore_layout == STYLE_SYSTEM) &&
            strcmp(current_path, ROMS_PATH) == 0 &&
            !viewing_recents && !viewing_favourites && !viewing_apps &&
            !apps_browsing && !viewing_search;
@@ -4507,6 +4529,7 @@ static bool browser_grid_view(void) {
 
 static bool switch_home_view(void) {
     return switch_home_open &&
+           !settings_graphical_home &&
            render_theme_current()->home_layout != RENDER_HOME_DEFAULT &&
            !settings_menu_active && !viewing_recents && !viewing_favourites &&
            !viewing_apps && !apps_browsing && !viewing_activity && !viewing_search &&
@@ -5564,6 +5587,17 @@ static void handle_input(void) {
         }
     }
 
+    /* The enhanced platform grid has no virtual Settings tile. Keep the
+     * familiar START shortcut available even when the collection is empty. */
+    if (settings_graphical_home && !settings_menu_active &&
+        input_was_pressed(FROG_BTN_START) &&
+        strcmp(current_path, ROMS_PATH) == 0 && !viewing_recents &&
+        !viewing_favourites && !viewing_apps && !apps_browsing &&
+        !viewing_search && !viewing_activity) {
+        switch_main_tab(MAIN_TAB_SETTINGS);
+        return;
+    }
+
     if (switch_home_view()) {
         int item_count = switch_home_item_count();
         if (switch_home_catos()) {
@@ -5642,7 +5676,7 @@ static void handle_input(void) {
         return;
     }
 
-    if (input_was_pressed(FROG_BTN_L2) && !switch_home_view() &&
+    if (input_was_pressed(FROG_BTN_L2) && !settings_graphical_home && !switch_home_view() &&
         strcmp(current_path, ROMS_PATH) == 0 && !viewing_recents &&
         !viewing_favourites && !viewing_apps && !apps_browsing &&
         !viewing_search && !viewing_activity) {
@@ -5901,7 +5935,8 @@ static void handle_input(void) {
             scan_directory(ROMS_PATH);
             strncpy(current_path, ROMS_PATH, MAX_PATH_LEN-1);
             switch_home_open = render_theme_current()->home_layout != RENDER_HOME_DEFAULT;
-        } else if (render_theme_current()->home_layout != RENDER_HOME_DEFAULT &&
+        } else if (!settings_graphical_home &&
+                   render_theme_current()->home_layout != RENDER_HOME_DEFAULT &&
                    strcmp(current_path, ROMS_PATH) == 0 && !switch_home_open) {
             switch_home_open = 1;
         } else if (strcmp(current_path, ROMS_PATH) != 0) {
@@ -6370,7 +6405,7 @@ void retro_init(void) {
         /* Recents reuses entries[] for its own rows. Keep the freshly-built
          * Games root in RAM so switching tabs never re-walks the FAT filesystem. */
         save_games_tab_entries();
-        if (settings_load_recents && recent_games_get_count() > 0)
+        if (start_in_recents())
             enter_recents_view();
     }
     port_error_active = false;
@@ -6823,7 +6858,7 @@ void retro_run(void) {
             port_migration_active = false;
             scan_directory(current_path);
             save_games_tab_entries();
-            if (settings_load_recents && recent_games_get_count() > 0)
+            if (start_in_recents())
                 enter_recents_view();
             if (port_migration_failures)
                 ui_toast_show("Some port folders stayed safe in Games");
