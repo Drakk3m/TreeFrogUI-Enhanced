@@ -8,19 +8,21 @@
 #define NAV_SETTINGS_MAX_DEPTH 4
 
 typedef enum {
-    NAV_PLATFORM_HOME, NAV_GAME_LIBRARY, NAV_GAME_DETAILS, NAV_SETTINGS
+    NAV_PLATFORM_HOME, NAV_GAME_LIBRARY, NAV_GAME_DETAILS, NAV_SETTINGS,
+    NAV_ACHIEVEMENTS_GALLERY
 } NavScreen;
 
 typedef enum {
     NAV_INPUT_UP, NAV_INPUT_DOWN, NAV_INPUT_LEFT, NAV_INPUT_RIGHT,
-    NAV_INPUT_CONFIRM, NAV_INPUT_BACK, NAV_INPUT_START
+    NAV_INPUT_CONFIRM, NAV_INPUT_BACK, NAV_INPUT_START, NAV_INPUT_GALLERY
 } NavInput;
 
 typedef enum {
     NAV_EFFECT_NONE, NAV_EFFECT_MOVE_SELECTION, NAV_EFFECT_SCROLL_DETAILS,
     NAV_EFFECT_OPEN_LIBRARY, NAV_EFFECT_OPEN_DETAILS, NAV_EFFECT_LAUNCH_GAME,
     NAV_EFFECT_OPEN_SETTINGS, NAV_EFFECT_RETURN_TO_LIBRARY, NAV_EFFECT_RETURN_TO_HOME,
-    NAV_EFFECT_RETURN_TO_DETAILS, NAV_EFFECT_ACTIVATE_SETTING, NAV_EFFECT_ADJUST_SETTING
+    NAV_EFFECT_RETURN_TO_DETAILS, NAV_EFFECT_ACTIVATE_SETTING, NAV_EFFECT_ADJUST_SETTING,
+    NAV_EFFECT_OPEN_GALLERY, NAV_EFFECT_RETURN_TO_GALLERY
 } NavEffect;
 
 typedef enum {
@@ -56,6 +58,8 @@ typedef struct {
     bool (*platform_exists)(void *context, const char *id);
     bool (*game_exists)(void *context, const char *platform_id, const char *id);
     void *context;
+    /* True only when the discovered game has a valid offline RA set. */
+    bool (*ra_set_valid)(void *context, const char *platform_id, const char *id);
 } NavCatalog;
 
 typedef struct {

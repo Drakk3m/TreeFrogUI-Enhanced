@@ -221,5 +221,7 @@
   "enhanced.controls.description": "Configura los botones de la consola.",
   "enhanced.system.description": "Idioma, audio, brillo y suspensión.",
   "enhanced.advanced": "Avanzado",
-  "enhanced.advanced.description": "Caché de archivos, aplicaciones y reloj emulado."
+  "enhanced.advanced.description": "Caché de archivos, aplicaciones y reloj emulado.",
+  "enhanced.retroachievements": "RetroAchievements",
+  "enhanced.retroachievements.description": "Consulta la disponibilidad y el progreso de logros sin conexión, cuando sean compatibles."
 }

@@ -275,5 +275,7 @@
   "enhanced.controls.description": "Configure the handheld buttons.",
   "enhanced.system.description": "Language, audio, brightness and sleep.",
   "enhanced.advanced": "Advanced",
-  "enhanced.advanced.description": "File cache, apps and emulated clock."
+  "enhanced.advanced.description": "File cache, apps and emulated clock.",
+  "enhanced.retroachievements": "RetroAchievements",
+  "enhanced.retroachievements.description": "View offline achievement availability and progress when supported."
 }

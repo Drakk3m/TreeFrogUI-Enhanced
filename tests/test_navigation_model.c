@@ -7,6 +7,7 @@
 typedef struct {
     bool platform;
     bool game;
+    bool ra;
 } LibraryFixture;
 
 static bool has_platform(void *context, const char *id) {
@@ -17,6 +18,12 @@ static bool has_platform(void *context, const char *id) {
 static bool has_game(void *context, const char *platform, const char *id) {
     const LibraryFixture *fixture = context;
     return fixture->game && strcmp(platform, "NES") == 0 &&
+           strcmp(id, "Game = edition.nes") == 0;
+}
+
+static bool has_ra_set(void *context, const char *platform, const char *id) {
+    const LibraryFixture *fixture = context;
+    return fixture->ra && strcmp(platform, "NES") == 0 &&
            strcmp(id, "Game = edition.nes") == 0;
 }
 
@@ -75,8 +82,8 @@ static void test_settings(NavModel *model, const NavCatalog *catalog, NavScreen 
 }
 
 static void test_routes(void) {
-    LibraryFixture fixture = { true, true };
-    NavCatalog catalog = { has_platform, has_game, &fixture };
+    LibraryFixture fixture = { true, true, false };
+    NavCatalog catalog = { has_platform, has_game, &fixture, NULL };
     NavModel model;
     nav_model_init(&model, false);
     route(&model, &catalog, NAV_INPUT_START, NAV_EFFECT_NONE, NAV_PLATFORM_HOME);
@@ -153,9 +160,76 @@ static void test_window(void) {
     assert(window.offset == window.selected && window.selected < 2);
 }
 
+static void test_achievements_gallery(void) {
+    LibraryFixture fixture = { true, true, true };
+    NavCatalog catalog = { has_platform, has_game, &fixture, has_ra_set };
+    NavModel model;
+    nav_model_init(&model, true);
+    assert(nav_model_set_platform(&model, &catalog, "NES"));
+    assert(nav_model_set_game(&model, &catalog, "Game = edition.nes"));
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_OPEN_LIBRARY, NAV_GAME_LIBRARY);
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_OPEN_DETAILS, NAV_GAME_DETAILS);
+
+    char details_snapshot[1024], gallery_snapshot[1024];
+    size_t details_length, gallery_length;
+    assert(nav_model_save(&model, details_snapshot, sizeof details_snapshot, &details_length));
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_OPEN_GALLERY,
+          NAV_ACHIEVEMENTS_GALLERY);
+    assert(nav_model_save(&model, gallery_snapshot, sizeof gallery_snapshot, &gallery_length));
+    assert(details_length == gallery_length);
+    assert(memcmp(details_snapshot, gallery_snapshot, details_length) == 0);
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_NONE,
+          NAV_ACHIEVEMENTS_GALLERY);
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_NONE,
+          NAV_ACHIEVEMENTS_GALLERY);
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_RETURN_TO_DETAILS,
+          NAV_GAME_DETAILS);
+    assert(strcmp(model.state.platform_id, "NES") == 0);
+    assert(strcmp(model.state.game_id, "Game = edition.nes") == 0);
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_OPEN_GALLERY,
+          NAV_ACHIEVEMENTS_GALLERY);
+    route(&model, &catalog, NAV_INPUT_START, NAV_EFFECT_OPEN_SETTINGS, NAV_SETTINGS);
+    route(&model, &catalog, NAV_INPUT_DOWN, NAV_EFFECT_MOVE_SELECTION, NAV_SETTINGS);
+    const NavSettingsLevel *level = nav_settings_level(&model);
+    assert(strcmp(level->items[level->selected].id, "games") == 0);
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_MOVE_SELECTION, NAV_SETTINGS);
+    level = nav_settings_level(&model);
+    assert(strcmp(level->items[level->selected].id, "retroachievements") == 0);
+    assert(level->items[level->selected].description_key);
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_MOVE_SELECTION, NAV_SETTINGS);
+    assert(model.settings_depth == 2 && nav_settings_level(&model)->count == 0);
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_NONE, NAV_SETTINGS);
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_MOVE_SELECTION, NAV_SETTINGS);
+    assert(model.settings_depth == 1);
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_MOVE_SELECTION, NAV_SETTINGS);
+    assert(model.settings_depth == 0 && nav_settings_level(&model)->selected == 1);
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_RETURN_TO_GALLERY,
+          NAV_ACHIEVEMENTS_GALLERY);
+
+    fixture.ra = false;
+    route(&model, &catalog, NAV_INPUT_START, NAV_EFFECT_OPEN_SETTINGS, NAV_SETTINGS);
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_RETURN_TO_DETAILS, NAV_GAME_DETAILS);
+    /* Missing/invalid RA data never changes the normal launch action. */
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_LAUNCH_GAME, NAV_GAME_DETAILS);
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_NONE, NAV_GAME_DETAILS);
+    fixture.ra = true;
+    fixture.game = false;
+    route(&model, &catalog, NAV_INPUT_CONFIRM, NAV_EFFECT_NONE, NAV_GAME_DETAILS);
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_NONE, NAV_GAME_DETAILS);
+    fixture.game = true;
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_OPEN_GALLERY,
+          NAV_ACHIEVEMENTS_GALLERY);
+    route(&model, &catalog, NAV_INPUT_START, NAV_EFFECT_OPEN_SETTINGS, NAV_SETTINGS);
+    fixture.game = false;
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_RETURN_TO_LIBRARY, NAV_GAME_LIBRARY);
+    assert(!model.state.game_id[0] && strcmp(model.state.platform_id, "NES") == 0);
+    route(&model, &catalog, NAV_INPUT_BACK, NAV_EFFECT_RETURN_TO_HOME, NAV_PLATFORM_HOME);
+    route(&model, &catalog, NAV_INPUT_GALLERY, NAV_EFFECT_NONE, NAV_PLATFORM_HOME);
+}
+
 static void test_snapshot(void) {
-    LibraryFixture fixture = { true, true };
-    NavCatalog catalog = { has_platform, has_game, &fixture };
+    LibraryFixture fixture = { true, true, false };
+    NavCatalog catalog = { has_platform, has_game, &fixture, NULL };
     NavModel previous, restarted;
     NavHorizontalWindow window;
     nav_model_init(&previous, true);
@@ -197,6 +271,7 @@ static void test_snapshot(void) {
 int main(void) {
     test_routes();
     test_window();
+    test_achievements_gallery();
     test_snapshot();
     puts("PASS navigation model");
     return 0;

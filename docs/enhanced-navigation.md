@@ -8,7 +8,8 @@ P2 builds and tests the model used by Enhanced UI surfaces. P1's platform grid a
 | --- | --- | --- | --- | --- |
 | Platform Home | Move selection within the platform view | Open selected discovered platform | Stay at Home | Open Settings Hub |
 | Game Library | Move within the current collection | Open details for a discovered game | Return to platform selection | Open Settings Hub |
-| Game Details | Scroll details vertically | Request launch of the selected game | Return to the same game in Library | Open Settings Hub |
+| Game Details | Scroll details vertically | Request launch of the selected game. A separate gallery action opens Achievement Gallery when available. | Return to the same game in Library | Open Settings Hub |
+| Achievement Gallery | Reserved for the future gallery view | No launch | Return to Game Details for the same platform and game | Open Settings Hub |
 | Settings Hub | Select a category | Enter selected category | Return to previous screen and selection | Stay in Settings |
 | Settings category | Select a row or adjust a control via its adapter | Open subcategory or activate enabled control | Restore parent and its selection | Stay in Settings |
 
@@ -33,6 +34,48 @@ Source of truth is `settings_rows` in `frogui_libretro.c`, together with `settin
 | Advanced | Apps in Settings, file cache | | RTC time increment | Open Apps, rebuild file cache, manual RTC date/time editor, RTC sync from USB |
 
 Keep pack/background availability rules for imported schemes, dependency on enabled backgrounds and icon-pack support, OTG availability and device-specific RTC controls. Language restart currently reopens the Language row via a one-shot flag. Keep that behavior during migration. Layout cycling via L2, core selection and extension-filter editing via the existing SELECT picker, and in-game PicoArch options are separate control surfaces. Future Settings may link to these existing actions. Their storage and handlers remain authoritative.
+
+## Offline RetroAchievements
+
+P2 reserves Achievement Gallery as a detail destination in the existing navigation model. A future explicit Gallery affordance opens it from Game Details only when the selected platform and game resolve and ROM Studio's offline set is available and valid. Confirm on Game Details still requests the existing launch independently of gallery availability. Back restores Game Details for the same platform and game. If the game disappears, use the same Library or Home fallback as the rest of P2. Start opens the existing Settings route from the gallery and restores the gallery context when it is still valid. Gallery does not consume a Settings nesting level. The versioned snapshot still stores only platform and game identities. It cannot restore a gallery session, grant an achievement, or change cold boot.
+
+The future Settings path is **Games & Emulation → RetroAchievements**. It is a reserved category in the model. The current Settings renderer and preferences stay in use. The category contains no live controls in this phase.
+
+| Future control | Semantics | When it can be exposed |
+| --- | --- | --- |
+| Enable RetroAchievements | Toggle that controls evaluation policy by the runtime. | Once an evaluator and a supported preference path exist. |
+| Offline achievement availability | Read-only status for the selected game and validated cache. | Once ROM Studio exports the supported catalog contract. |
+| Runtime compatibility status | Read-only capability and session state for the selected core, build and content. | Once the runtime reports compatibility and activity for those inputs. |
+| Local unlock progress | Read-only progress sourced from local evaluation records. | Once those records have defined provenance and durable storage. |
+| Synchronization status | Read-only state sourced from the ROM Studio workflow and remote confirmation. | Once the workflow and upstream service support are verified. |
+
+### State semantics
+
+| Dimension | Distinct states | What qualifies |
+| --- | --- | --- |
+| Offline catalog | No matching set, set available offline | Match the discovered ROM identity to a structurally valid supported export. A malformed, stale or unsupported export is unavailable to the gallery. |
+| Evaluation | Unsupported, inactive, active | Unsupported means the particular core/content/runtime path lacks confirmed capability. Inactive means a supported evaluator is not currently evaluating, including when disabled. Active requires a running eligible session. Cached definitions alone establish none of these. |
+| Unlock record | Locked or unknown, unlocked locally, synchronized remotely | Local unlock requires evidence from an evaluator. Remote synchronization requires confirmation for that unlock from the authorized workflow. A pending or rejected operation leaves the local record local. |
+
+### Responsibility and dependency matrix
+
+| Owner | Responsibilities | Inputs and outputs |
+| --- | --- | --- |
+| ROM Studio | Authoritative ROM matching, offline cache/export and any supported account or synchronization workflow. | Owns the association between stable game identities, compatible content hashes and RA game/achievement IDs. Prepares titles, descriptions, badges and definitions. A future export can include local unlock status and pending synchronization information from known provenance. |
+| Enhanced frontend | Browse available offline data and route to the gallery. Render cache and progress statuses when supplied. | Reads the verified export and runtime status through adapters. No separate downloader, hashing pipeline, credential storage or unlock evaluation. Gameplay uses the existing launch path even when RA data is absent. |
+| PicoArch / rcheevos | Potential future evaluation while a game is running. | Requires a validated core memory view and lifecycle integration. Emits local evaluation records with provenance if such a runtime is built. P2 introduces no runtime, core or launcher changes. |
+| RetroAchievements service | Authority for remote unlock status and eligibility. | Any later synchronization depends on documented service support, authorized sessions and explicit confirmation. A desktop queue does not guarantee remote acceptance. |
+
+No authoritative ROM Studio source or export specification was found in the local workspace, Downloads, or the inspected R36SX backup archive. The TreeFrogUI web scraper uses RetroAchievements for artwork matching. That code has no authority over ROM Studio's catalog format or handheld evaluation. Before defining a reader, inspect the Studio identity and hash resolver, export serializer, achievement/definition and badge cache, unlock record model and synchronization workflow. Request sample exports covering absent sets, hash variants, multidisc, badges, local-only records, failed/pending sync and remotely confirmed unlocks. No storage schema, hash algorithm, filenames or credential handling are introduced here. Console exports must contain no account credentials, tokens or API keys.
+
+### Runtime questions to close before implementation
+
+- Prove safe memory reads for each core, platform and content combination. The inspected PicoArch reference resolves Libretro memory accessors and uses them for save RAM. Its environment handler does not implement the memory-map or achievement-support commands declared in the Libretro header. These findings leave RA memory maps, address validity and per-core support unverified. FrogUI itself returns no game memory.
+- Establish evaluation timing and lifecycle on the emulation thread, including core load/unload, reset, pause, disc change, fast-forward and save-state/rewind behavior. Confirm the cost and available memory on R36SX.
+- Define durable local unlock recording across shutdown, write interruption and repeated evaluation. Keep origin data sufficient for ROM Studio to distinguish local-only, pending, rejected and confirmed states. Keep the existing launch request unchanged.
+- Verify the policy and API for receiving credit. The upstream FAQ does not support starting a fully offline RA session. Its reconnect guidance concerns an already-started session and does not establish support for retroactive submissions from a disconnected handheld. Treat any proposed later submission as unresolved until the service confirms the workflow.
+
+Sources: [PicoArch memory accessors](https://github.com/tzubertowski/TreeFrogUI_picoarch/blob/2ab990d490b4d6aa5872ca98c85c643df7b4db7b/core.c#L70), [rcheevos client integration](https://github.com/RetroAchievements/rcheevos/wiki/rc_client-integration), [RetroAchievements FAQ](https://docs.retroachievements.org/general/faq.html#can-i-earn-achievements-offline).
 
 ## Horizontal platform state
 

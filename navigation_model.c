@@ -3,11 +3,18 @@
 #include <stdio.h>
 #include <string.h>
 
+static const NavSetting ra_settings[] = {
+    { "retroachievements", "enhanced.retroachievements",
+      "enhanced.retroachievements.description", NULL, NAV_SETTING_SUBCATEGORY,
+      true, NULL, 0 },
+};
+
 static const NavSetting settings_hub[] = {
     { "appearance", "settings.appearance", "enhanced.appearance.description",
       NULL, NAV_SETTING_SUBCATEGORY, true, NULL, 0 },
     { "games", "enhanced.games_emulation", "enhanced.games_emulation.description",
-      NULL, NAV_SETTING_SUBCATEGORY, true, NULL, 0 },
+      NULL, NAV_SETTING_SUBCATEGORY, true, ra_settings,
+      sizeof ra_settings / sizeof ra_settings[0] },
     { "controls", "enhanced.controls", "enhanced.controls.description",
       NULL, NAV_SETTING_SUBCATEGORY, true, NULL, 0 },
     { "system", "settings.system", "enhanced.system.description",
@@ -31,6 +38,11 @@ static bool game_exists(const NavCatalog *catalog, const char *platform, const c
     return platform_exists(catalog, platform) && valid_identity(id) &&
            (!catalog || (catalog->game_exists &&
                          catalog->game_exists(catalog->context, platform, id)));
+}
+
+static bool ra_set_valid(const NavCatalog *catalog, const char *platform, const char *id) {
+    return game_exists(catalog, platform, id) && catalog && catalog->ra_set_valid &&
+           catalog->ra_set_valid(catalog->context, platform, id);
 }
 
 void nav_model_init(NavModel *model, bool enabled) {
@@ -74,10 +86,15 @@ static NavEffect return_to_screen(NavModel *model, const NavCatalog *catalog, Na
         screen = NAV_PLATFORM_HOME;
     } else if (!game_exists(catalog, state->platform_id, state->game_id)) {
         state->game_id[0] = '\0';
-        if (screen == NAV_GAME_DETAILS) screen = NAV_GAME_LIBRARY;
+        if (screen == NAV_GAME_DETAILS || screen == NAV_ACHIEVEMENTS_GALLERY)
+            screen = NAV_GAME_LIBRARY;
+    } else if (screen == NAV_ACHIEVEMENTS_GALLERY &&
+               !ra_set_valid(catalog, state->platform_id, state->game_id)) {
+        screen = NAV_GAME_DETAILS;
     }
     state->screen = screen;
     if (screen == NAV_GAME_DETAILS) return NAV_EFFECT_RETURN_TO_DETAILS;
+    if (screen == NAV_ACHIEVEMENTS_GALLERY) return NAV_EFFECT_RETURN_TO_GALLERY;
     if (screen == NAV_GAME_LIBRARY) return NAV_EFFECT_RETURN_TO_LIBRARY;
     return NAV_EFFECT_RETURN_TO_HOME;
 }
@@ -128,12 +145,24 @@ static NavEffect route_screen(NavModel *model, const NavCatalog *catalog, NavInp
         return NAV_EFFECT_OPEN_SETTINGS;
     }
     if (input == NAV_INPUT_BACK) {
+        if (state->screen == NAV_ACHIEVEMENTS_GALLERY)
+            return return_to_screen(model, catalog, NAV_GAME_DETAILS);
         if (state->screen == NAV_GAME_DETAILS)
             return return_to_screen(model, catalog, NAV_GAME_LIBRARY);
         if (state->screen == NAV_GAME_LIBRARY)
             return return_to_screen(model, catalog, NAV_PLATFORM_HOME);
         return NAV_EFFECT_NONE;
     }
+    if (state->screen == NAV_GAME_DETAILS && input == NAV_INPUT_GALLERY) {
+        if (!ra_set_valid(catalog, state->platform_id, state->game_id))
+            return NAV_EFFECT_NONE;
+        state->screen = NAV_ACHIEVEMENTS_GALLERY;
+        return NAV_EFFECT_OPEN_GALLERY;
+    }
+    if (state->screen == NAV_ACHIEVEMENTS_GALLERY)
+        return NAV_EFFECT_NONE;
+    if (input == NAV_INPUT_GALLERY)
+        return NAV_EFFECT_NONE;
     if (input == NAV_INPUT_CONFIRM) {
         if (state->screen == NAV_PLATFORM_HOME) {
             if (!platform_exists(catalog, state->platform_id)) return NAV_EFFECT_NONE;
