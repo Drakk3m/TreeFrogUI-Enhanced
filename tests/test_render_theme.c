@@ -71,7 +71,7 @@ int main(void) {
     }
     render_theme_load("vertical", "MinUIfiedVertical");
     theme = render_theme_current();
-    assert(theme->home_layout == RENDER_HOME_SWITCH);
+    assert(theme->home_layout == RENDER_HOME_VERTICAL);
     assert(theme->grid_columns == 0 && theme->grid_rows == 0);
     render_theme_load("vertical", "MinUIfied");
     theme = render_theme_current();
