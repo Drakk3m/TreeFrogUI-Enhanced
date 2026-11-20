@@ -106,6 +106,15 @@ int main(int argc, char **argv) {
     assert(strcmp(current_path, collection) == 0);
     assert(entry_count == 1 && strcmp(entries[0].name, "Example.nes") == 0);
     assert(!icon_system_view());
+    press(FROG_BTN_START);
+    assert(settings_menu_active);
+    assert(enhanced_settings_navigation.state.screen == NAV_SETTINGS);
+    assert(strcmp(enhanced_settings_navigation.state.game_id, "Example.nes") == 0);
+    /* Exercise the restore adapter with the fixture's discovered ROM root. */
+    settings_menu_active = false;
+    restore_settings_listing();
+    assert(strcmp(current_path, collection) == 0);
+    assert(strcmp(entries[selected_index].name, "Example.nes") == 0);
     press(FROG_BTN_B);
     assert(strcmp(current_path, ROMS_PATH) == 0 && icon_system_view());
     assert(strcmp(entries[selected_index].name, "NoArtwork") == 0);

@@ -213,5 +213,13 @@
   "system.videos": "Vídeos",
   "system.video": "Vídeos",
   "system.images": "Imágenes",
-  "system.photos": "Imágenes"
+  "system.photos": "Imágenes",
+  "enhanced.appearance.description": "Temas, fuentes e imágenes de plataformas.",
+  "enhanced.games_emulation": "Juegos y emulación",
+  "enhanced.games_emulation.description": "Colecciones, lanzamiento y reanudación de juegos.",
+  "enhanced.controls": "Controles",
+  "enhanced.controls.description": "Configura los botones de la consola.",
+  "enhanced.system.description": "Idioma, audio, brillo y suspensión.",
+  "enhanced.advanced": "Avanzado",
+  "enhanced.advanced.description": "Caché de archivos, aplicaciones y reloj emulado."
 }

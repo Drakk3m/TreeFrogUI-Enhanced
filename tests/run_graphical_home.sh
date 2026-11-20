@@ -9,7 +9,7 @@ ${CC:-cc} -ffunction-sections -fdata-sections -Wl,--gc-sections \
     -Wl,--wrap=fopen -Wl,--wrap=system -Wl,--wrap=access \
     $(pkg-config --cflags freetype2 harfbuzz) \
     -Iexternal/SheenBidi -Iexternal/SheenBidi/Headers -Iexternal/SheenBidi/Source \
-    -DSB_CONFIG_UNITY tests/test_graphical_home.c render.c render_theme.c font.c \
+    -DSB_CONFIG_UNITY tests/test_graphical_home.c navigation_model.c render.c render_theme.c font.c \
     recent_games.c theme.c theme_profile.c favorites.c banner.c backlight.c input.c \
     core_override.c ext_filter.c screenshot.c common/i18n.c \
     external/SheenBidi/Source/SheenBidi.c $(pkg-config --libs freetype2 harfbuzz) \

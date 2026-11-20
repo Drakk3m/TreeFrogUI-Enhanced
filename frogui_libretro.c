@@ -28,6 +28,7 @@
 #include <sys/wait.h>
 
 #include "libretro.h"
+#include "navigation_model.h"
 #include "font.h"
 #include "render.h"
 #include "common/pill_animation.h"
@@ -3512,17 +3513,28 @@ static int main_tab_active(void) {
     return MAIN_TAB_GAMES;
 }
 
+/* Only bridge the live browser to Settings at an explicit entry. The
+ * scanner and browser still own the live listing and its selection. */
+static NavModel enhanced_settings_navigation;
+static char enhanced_settings_directory[MAX_PATH_LEN];
+
 static void switch_main_tab(int target) {
     int old = main_tab_active();
     if (target < MAIN_TAB_RECENTS || target > MAIN_TAB_SETTINGS || target == old)
         return;
-    if (target != MAIN_TAB_SETTINGS) settings_apps_origin = false;
+    if (target != MAIN_TAB_SETTINGS) {
+        enhanced_settings_navigation.state.screen = NAV_PLATFORM_HOME;
+        settings_apps_origin = false;
+    }
 
     ui_transition_start(target > old ? 1 : -1);
     if (old == MAIN_TAB_GAMES) {
-        games_tab_selected = selected_index;
-        games_tab_scroll = scroll_offset;
-        save_games_tab_entries();
+        if (target != MAIN_TAB_SETTINGS || enhanced_settings_navigation.state.screen != NAV_SETTINGS ||
+            strcmp(current_path, ROMS_PATH) == 0) {
+            games_tab_selected = selected_index;
+            games_tab_scroll = scroll_offset;
+            save_games_tab_entries();
+        }
     } else if (old == MAIN_TAB_RECENTS) {
         recents_tab_selected = selected_index;
     } else if (old == MAIN_TAB_APPS) {
@@ -3590,6 +3602,93 @@ static void switch_main_tab(int target) {
             if (settings_vis_rows[i] == settings_menu_idx) { found = 1; break; }
         if (!found) settings_menu_idx = settings_vis_rows[0];
         settings_filter_idx_on_enter = settings_filter_idx;
+    }
+}
+
+static void open_enhanced_settings(void) {
+    NavModel *navigation = &enhanced_settings_navigation;
+    nav_model_init(navigation, 1);
+    snprintf(enhanced_settings_directory, sizeof enhanced_settings_directory,
+             "%s", current_path);
+    const char *name = selected_index >= 0 && selected_index < entry_count
+                     ? entries[selected_index].name : "";
+    if (strcmp(current_path, ROMS_PATH) == 0) {
+        snprintf(navigation->state.platform_id, NAV_ID_MAX, "%s", name);
+    } else {
+        size_t root_length = strlen(ROMS_PATH);
+        if (strncmp(current_path, ROMS_PATH, root_length) == 0 &&
+            current_path[root_length] == '/') {
+            const char *platform = current_path + root_length + 1;
+            size_t length = strcspn(platform, "/");
+            if (length > 0 && length < NAV_ID_MAX) {
+                snprintf(navigation->state.platform_id, NAV_ID_MAX,
+                         "%.*s", (int)length, platform);
+                snprintf(navigation->state.game_id, NAV_ID_MAX, "%s", name);
+                navigation->state.screen = NAV_GAME_LIBRARY;
+            }
+        }
+    }
+    NavEffect effect;
+    if (nav_model_handle(navigation, NULL, NAV_INPUT_START, &effect) &&
+        effect == NAV_EFFECT_OPEN_SETTINGS)
+        switch_main_tab(MAIN_TAB_SETTINGS);
+}
+
+static int visible_entry_named(const char *name) {
+    if (!name[0]) return -1;
+    for (int i = 0; i < entry_count; i++)
+        if (strcmp(entries[i].name, name) == 0)
+            return i;
+    return -1;
+}
+
+static void select_visible_entry(int index) {
+    if (index < 0) return;
+    selected_index = index;
+    scroll_offset = index >= VISIBLE_ENTRIES ? index - VISIBLE_ENTRIES + 1 : 0;
+}
+
+static void restore_settings_listing(void) {
+    NavModel *navigation = &enhanced_settings_navigation;
+    bool enhanced_return = navigation->state.screen == NAV_SETTINGS;
+    if (enhanced_return) {
+        nav_model_handle(navigation, NULL, NAV_INPUT_BACK, NULL);
+        /* Open Apps can temporarily replace the listing while Settings is open. */
+        viewing_apps = false;
+        apps_browsing = false;
+        viewing_activity = false;
+    }
+
+    scan_directory(ROMS_PATH);
+    snprintf(current_path, sizeof current_path, "%s", ROMS_PATH);
+    selected_index = 0;
+    scroll_offset = 0;
+    size_t root_length = strlen(ROMS_PATH);
+    bool same_root = strcmp(enhanced_settings_directory, ROMS_PATH) == 0 ||
+                     (strncmp(enhanced_settings_directory, ROMS_PATH, root_length) == 0 &&
+                      enhanced_settings_directory[root_length] == '/');
+    int platform = enhanced_return && same_root
+                 ? visible_entry_named(navigation->state.platform_id) : -1;
+    select_visible_entry(platform);
+    if (enhanced_return) {
+        games_tab_selected = selected_index;
+        games_tab_scroll = scroll_offset;
+    }
+    save_games_tab_entries();
+
+    if (navigation->state.screen != NAV_GAME_LIBRARY || platform < 0 ||
+        !entries[platform].is_dir)
+        return;
+    DIR *directory = opendir(enhanced_settings_directory);
+    if (directory) {
+        closedir(directory);
+        snprintf(current_path, sizeof current_path, "%s", enhanced_settings_directory);
+        scan_directory(current_path);
+        select_visible_entry(visible_entry_named(navigation->state.game_id));
+    } else {
+        snprintf(current_path, sizeof current_path, "%s/%s",
+                 ROMS_PATH, navigation->state.platform_id);
+        scan_directory(current_path);
     }
 }
 
@@ -4349,7 +4448,9 @@ static void handle_settings_menu(void) {
         settings_sections_save();   /* persist immediately (review request) */
         settings_build_vis_rows();
         /* cursor stays on the header we just flipped */
-    } else if ((left || right) && settings_row_enabled(&settings_rows[settings_menu_idx])) {
+    } else if ((left || right) && settings_row_enabled(&settings_rows[settings_menu_idx]) &&
+               (enhanced_settings_navigation.state.screen != NAV_SETTINGS ||
+                settings_row_selectable(settings_menu_idx))) {
         int delta = right ? 1 : -1;
         const SRow *r = &settings_rows[settings_menu_idx];
         switch (r->type) {
@@ -4430,6 +4531,12 @@ static void handle_settings_menu(void) {
         if (settings_vis_n > 0) settings_menu_idx = settings_vis_rows[0];
         return;
     }
+    if (enhanced_settings_navigation.state.screen == NAV_SETTINGS &&
+        input_was_pressed(FROG_BTN_A) &&
+        (!settings_row_enabled(&settings_rows[settings_menu_idx]) ||
+         !settings_row_selectable(settings_menu_idx)))
+        return;
+
     if (input_was_pressed(FROG_BTN_A) &&
         settings_rows[settings_menu_idx].type == RT_SETTINGS_LAYOUT) {
         frogui_settings_layout_set(settings_layout_keys[
@@ -4446,14 +4553,9 @@ static void handle_settings_menu(void) {
          * then refreshed lazily the first time they are opened. */
         settings_file_cache = 1;
         cache_clear();
-        scan_directory(ROMS_PATH);
         settings_save_file();
-        strncpy(current_path, ROMS_PATH, MAX_PATH_LEN-1);
-        current_path[MAX_PATH_LEN-1] = '\0';
-        selected_index = 0;
-        scroll_offset = 0;
         settings_menu_active = false;
-        save_games_tab_entries();
+        restore_settings_listing();
         ui_toast_show("File cache rebuilt");
         return;
     }
@@ -4496,12 +4598,9 @@ static void handle_settings_menu(void) {
         settings_save_file();
         settings_volume_commit_final();   /* reset the live-commit debounce state */
         settings_menu_active = false;
-        /* re-scan root so a hide-empty-folders change takes effect now */
+        /* Apply library preferences, then resolve the saved identities again. */
         resolve_roms_root();
-        scan_directory(ROMS_PATH);
-        strncpy(current_path, ROMS_PATH, MAX_PATH_LEN-1);
-        selected_index = 0; scroll_offset = 0;
-        save_games_tab_entries();
+        restore_settings_listing();
     }
 }
 
@@ -5587,14 +5686,13 @@ static void handle_input(void) {
         }
     }
 
-    /* The enhanced platform grid has no virtual Settings tile. Keep the
-     * familiar START shortcut available even when the collection is empty. */
+    /* START opens the existing Settings renderer from Enhanced Home/Library,
+     * including an empty collection. Other views keep their current controls. */
     if (settings_graphical_home && !settings_menu_active &&
-        input_was_pressed(FROG_BTN_START) &&
-        strcmp(current_path, ROMS_PATH) == 0 && !viewing_recents &&
+        input_was_pressed(FROG_BTN_START) && !viewing_recents &&
         !viewing_favourites && !viewing_apps && !apps_browsing &&
         !viewing_search && !viewing_activity) {
-        switch_main_tab(MAIN_TAB_SETTINGS);
+        open_enhanced_settings();
         return;
     }
 
@@ -6300,6 +6398,7 @@ static void render_port_migration(const PortMigration *port, int index,
 
 void retro_init(void) {
     dbg("retro_init start");
+    nav_model_init(&enhanced_settings_navigation, 0);
     settings_apps_origin = false;
     viewing_info = false;
     input_log_start();

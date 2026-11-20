@@ -267,5 +267,13 @@
   "system.videos": "Videos",
   "system.video": "Videos",
   "system.images": "Images",
-  "system.photos": "Images"
+  "system.photos": "Images",
+  "enhanced.appearance.description": "Themes, fonts and platform artwork.",
+  "enhanced.games_emulation": "Games & Emulation",
+  "enhanced.games_emulation.description": "Game collections, launch and resume options.",
+  "enhanced.controls": "Controls",
+  "enhanced.controls.description": "Configure the handheld buttons.",
+  "enhanced.system.description": "Language, audio, brightness and sleep.",
+  "enhanced.advanced": "Advanced",
+  "enhanced.advanced.description": "File cache, apps and emulated clock."
 }
