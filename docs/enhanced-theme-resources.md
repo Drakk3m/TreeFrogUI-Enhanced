@@ -1,31 +1,33 @@
 # Enhanced theme resources, version 1
 
-P3 adds an optional external theme for the existing Enhanced grid. The live effects are platform icons and the selected platform or shared Home backdrop. The navigation model keeps platform and game identity and has no dependency on filenames, colors, image formats, sound or the active theme. Home, CoverFlow, Details, Gallery and the future Settings view keep their existing P2 scope.
+A native FrogUI background pack can also provide resources for the existing Enhanced grid. The live effects are platform icons and the selected platform or shared Home backdrop. The navigation model keeps platform and game identity and has no dependency on filenames, colors, image formats, sound or the active theme. Home, CoverFlow, Details, Gallery and the future Settings view keep their existing P2 scope.
 
 ## Audit and integration
 
 | Existing mechanism | P3 decision |
 | --- | --- |
-| `settings_load_file`, `settings_save_file`, `settings_apply_style_defaults` and the legacy `render_theme_load` | Keep the existing settings file and renderer. Enhanced resources use a separate namespace inside `frogui/` alongside the existing `schemes/`, `theme-packs/`, `icon-packs/`, `system-icons/`, `fonts/` and `lang/`. The current theme still determines layout, colors and fonts. |
+| `theme_pack_scan`, `settings_load_file`, `settings_save_file` and `load_banner_for_view` | The existing registry scans directories under `frogui/theme-packs/`. Named packs provide art per system plus a shared `main.*` fallback. Appearance → **Background Theme Pack** selects a folder and persists its name as `theme_pack` in `frogui/settings.txt`. The Default menu entry uses the original flat art in `frogui/`. The legacy reader does not require a manifest or interpret `theme.ini`. |
+| `icon_pack_scan` and `system_icon_path` | Icon packs already offer a separate legacy icon override. Missing icons fall back to `system-icons/` and then initials. The optional resource manifest may supply individual Enhanced overrides and reuses this existing chain whenever an override is missing. |
+| `render_scheme_scan`, `render_theme_load`, `render_theme_set_screen` | `schemes/<name>.ini` and optional screen INIs under `schemes/<name>/640x480/scheme/` control layout, colors, metrics and scheme artwork. Imported schemes take precedence and disable the Background Theme Pack control. They remain a separate existing renderer configuration. Fonts and localization continue to be managed by their existing selectors and loaders. |
 | `system_icon_path`, `system_icon_load` and `system_icon_draw` | Resolve Enhanced logical IDs before the existing path fallback. Use the same RGBA-to-RGB565 conversion and alpha blend into the current frame. The existing 12-slot decoded LRU owns pixels. The eight-item Enhanced page holds borrowed pointers prepared outside drawing on a page, view, listing, theme or icon-pack change. |
 | `load_banner_for_view`, `banner_queue_image` and `banner_render` | Honor the user's background toggle and fixed wallpaper first. Use the same decoder and row-batched RGB565 conversion for Enhanced assets. A shared backdrop is reused when successive selections resolve to the same active resource. Custom backdrops use the active and pending buffers, with no extra decoded ring or disk cache. Legacy fallbacks retain their normal behavior. |
 | `load_image_thumbnail` and the existing box-art path | The legacy loader retains its 250×250 RGB565 and alpha buffers. P3 reserves placeholder IDs. CoverFlow and per-game media remain consumers for a later phase. |
 | `system_carousel_start`, `system_carousel_ease` and `render_system_carousel` | Preserve the legacy 12-rendered-frame smoothstep and its carry-forward offset. Future Home can adapt the interpolation to P2's noncircular window and consume duration and reduced-motion settings here. P3 launches no new animation or audio engine. |
 | `tr`, `tr_or` and `lang/builtin/` | Existing localization and fallback continue to own UI text. A manifest name is optional theme metadata and plays no role in navigation or localized UI lookup. |
 
-The old loaders accept conventional filenames, but lack versioning, logical IDs, role-specific bounds and package containment. The manager therefore owns **descriptors and validation**, while native FrogUI loaders continue to own decoded pixels. Ordinary P3 paint and idle work do not invoke the manager or allocate another image. Existing legacy screens can still perform the I/O they performed before P3.
+The background-pack loader accepts conventional filenames and ignores manifest metadata. That makes a pack-local optional manifest a compatible extension. The old loaders lack logical IDs, role-specific bounds and package containment. The manager therefore owns **descriptors and validation**, while native FrogUI loaders continue to own decoded pixels. Ordinary P3 paint and idle work do not invoke the manager or allocate another image. Existing legacy screens can still perform the I/O they performed before P3.
 
 ## Installation and export contract
 
-Choose a directory under `/mnt/sdcard/frogui/enhanced/themes/` and place `theme.ini` at its root. The folder selector uses lowercase ASCII letters, digits, underscores and hyphens, up to 63 bytes. The default folder is `default`. With Enhanced Home on, an optional `enhanced_theme=<folder>` in the existing `frogui/settings.txt` selects another package on next start. `enhanced_theme=none` keeps the Enhanced layout with native resources. Enhanced Home off gives the original renderer and resources.
+Install a named folder under `/mnt/sdcard/frogui/theme-packs/`. Use the native filenames at its root. If desired, add `theme.ini` at that same root. In **Settings → Appearance → Background Theme Pack**, select the pack once. With the built-in renderer and Enhanced Home active, the optional manifest is loaded for that selection. With Enhanced Home off, the same pack supplies ordinary background art through its existing filenames. With an imported scheme active, its existing background policy wins. The stock Default selection, a pack without a manifest and an incompatible manifest all keep native behavior.
 
 Example for a 640×480 theme:
 
 ```ini
 [theme]
 manifest_version=1
-id=default
-name=Sample theme
+id=consolidation_sample
+name=Consolidation Sample
 screen_width=640
 screen_height=480
 
@@ -41,10 +43,10 @@ reduced_motion=off
 navigation_sounds=off
 
 [resource.home.background]
-path=art/home.jpg
+path=main.png
 
 [resource.platform.nes.background]
-path=art/nes.jpg
+path=nes.png
 
 [resource.platform.nes.icon]
 path=icons/nes.png
@@ -67,7 +69,49 @@ path=sounds/nav.wav
 - Platform keys use the lowercase ROM folder when it is an ASCII token. Folder display labels and physical asset filenames can change independently. The supported IDs are `home.background`, `platform.<key>.background`, `platform.<key>.icon`, `settings.<key>.icon`, `cover.placeholder`, `achievement.badge` and `navigation.sound`.
 - Export **8-bit, non-interlaced PNG**, JPEG or BMP. Prefer PNG with alpha for icons, JPEG for opaque backgrounds. Each file is at most **1 MiB**. Use **640×480 or smaller** for backgrounds, **256×256 or smaller** for icons/placeholders and preferably **160×160 or smaller** for platform icons. Dimensions are read from the image, then checked again against the bytes passed to the decoder. The reserved navigation sound accepts a RIFF/WAVE descriptor only. P3 performs no sound playback or audio codec validation.
 - Fallback order for backgrounds is platform-specific → shared Home → existing FrogUI background logic → solid background. The explicit wallpaper and disabling backgrounds take priority over Enhanced art. For icons it is Enhanced → native pack → native system icon → initials. Missing or corrupt files leave ordinary platform navigation usable. The future Settings, cover, badge and sound consumers will decide their own native fallback.
-- Publish a complete immutable package in a new folder, validate its files and then switch `enhanced_theme` on the test card while the console is off. Keep the prior package and previous selector until the replacement is verified. This supports rollback even when file replacement on FAT32 is interrupted. Avoid editing files under a currently active theme.
+- Publish a complete package in a new named pack folder, validate its files and select it using Background Theme Pack. Keep the previous package until the replacement is verified. Avoid replacing assets under an active pack in place. Change selections or restart to reload the cache. Explicit wallpaper still takes priority and the background toggle suppresses Enhanced backdrops.
+
+## SD layout and ownership
+
+In the P3 preview, native packs and Enhanced resources used separate folders and persisted selections:
+
+```text
+frogui/
+  settings.txt                 theme_pack and enhanced_theme were both active
+  theme-packs/<pack>/          native background artwork
+  enhanced/themes/<id>/       Enhanced theme.ini and mapped assets
+```
+
+The consolidated installation uses:
+
+```text
+frogui/
+  settings.txt                 user preferences, including the single theme_pack selector
+  theme-packs/                 native TreeFrogUI background pack registry
+    <pack>/
+      main.png                 ordinary native fallback
+      nes.png                  ordinary per-system art
+      theme.ini                optional Enhanced resources in the same package
+      icons/                   optional pack-local files referenced by logical IDs
+  icon-packs/                  existing shared native icon sets
+  system-icons/                native default icon assets
+  schemes/                     existing renderer schemes and their artwork
+  fonts/                       existing fonts
+  lang/                        localization assets
+  .cache/                      generated FrogUI cache
+roms/                          user library and per-game media
+```
+
+The initial P3 preview used `frogui/enhanced/themes/<id>/theme.ini` and an independent `enhanced_theme` key. Consolidation leaves that directory and setting untouched as migration evidence. No external theme is loaded from that path. No theme is chosen from the old key. An existing legacy key is retained when settings are saved for rollback.
+
+### Manual migration and rollback
+
+1. Back up `frogui/settings.txt` and keep the old `enhanced/themes/` folders. Confirm the desired native Background Theme Pack in Settings.
+2. To adopt a preview theme, **copy** its manifest and the referenced relative files into a named folder in `frogui/theme-packs/`. Add or retain `main.*` and per-system files at the root for native use. You can reuse those same files in the manifest. Keep filenames distinct where needed to preserve existing art. If the target has its own manifest, use a new named folder or reconcile manifests manually.
+3. Select that folder once under Background Theme Pack. Do not change the old `enhanced_theme` key. The new binary ignores it for selection.
+4. Roll back from a powered-off test SD by restoring the original P3 preview binary or the accepted P2 + RA binary. If you want the old settings exactly as before, copy back the settings backup while the console is off. The old folders remain available. No cleanup is necessary for the new implementation.
+
+ROM Studio can export one folder with conventional native artwork and optional v1 manifest resources. This contract neither changes the library metadata format nor requires a separate export destination.
 
 | Presentation key | Default | Valid values |
 | --- | --- | --- |

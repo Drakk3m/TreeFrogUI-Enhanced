@@ -1,5 +1,7 @@
 /* Host integration test. Include the core to exercise its private UI state. */
 #include <assert.h>
+static char test_theme_pack_root[512];
+#define FROGUI_THEME_PACK_ROOT test_theme_pack_root
 #include "../frogui_libretro.c"
 
 static char test_settings[512];
@@ -108,8 +110,12 @@ static void write_full_screen_bmp(const char *path) {
 
 static void test_enhanced_art(const char *root) {
     char theme_root[512], path[512];
-    assert(snprintf(theme_root, sizeof theme_root, "%s/.theme", root) < (int)sizeof theme_root);
+    char packs_root[512];
+    assert(snprintf(packs_root, sizeof packs_root, "%s/theme-packs", root) < (int)sizeof packs_root);
+    assert(mkdir(packs_root, 0700) == 0);
+    assert(snprintf(theme_root, sizeof theme_root, "%s/Pack", packs_root) < (int)sizeof theme_root);
     assert(mkdir(theme_root, 0700) == 0);
+    strcpy(test_theme_pack_root, packs_root);
     assert(snprintf(test_legacy_icon, sizeof test_legacy_icon, "%s/icon.png", theme_root)
            < (int)sizeof test_legacy_icon);
     write_bytes(test_legacy_icon, icon_png, sizeof icon_png);
@@ -123,25 +129,34 @@ static void test_enhanced_art(const char *root) {
                        "[resource.platform.afirst.icon]\npath=icon.png\n"
                        "[resource.platform.noartwork.icon]\npath=bad.png\n");
 
-    enhanced_theme = theme_resource_create(theme_root, THEME_RESOURCE_CACHE_MAX);
-    assert(enhanced_theme && theme_resource_load_manifest(enhanced_theme, "theme.ini"));
+    theme_pack_count = 2;
+    strcpy(theme_pack_files[1], "Pack");
+    strcpy(theme_pack_disp[1], "Pack");
+    settings_theme_pack_idx = 1;
+    settings_render_scheme_idx = 0;
+    settings_graphical_home = 1;
+    enhanced_theme_active = -1;
+    assert(enhanced_theme_sync());
+    assert(enhanced_theme && strcmp(enhanced_theme_active_id, "Pack") == 0);
+    settings_render_scheme_idx = 1; /* imported schemes keep their native policy */
+    assert(enhanced_theme_sync() && !enhanced_theme);
+    settings_render_scheme_idx = 0;
+    assert(enhanced_theme_sync() && enhanced_theme);
     ThemeResourceDescriptor bad;
     assert(theme_resource_resolve(enhanced_theme, "platform.noartwork.icon", &bad));
     int width, height;
     assert(!enhanced_decode_image(&bad, &width, &height, 4)); /* valid header, bad pixel data */
 
-    assert(!settings_graphical_home);
+    settings_graphical_home = 0;
     assert(!system_icon_get("AFirst")); /* legacy still ignores the Enhanced mapping */
     system_icons_clear(); /* simulate switching the manifest at the live boundary */
     settings_graphical_home = 1;
     settings_backgrounds = 1;
     settings_wallpaper_idx = 0;
-    scan_directory(ROMS_PATH);
-    prepare_enhanced_grid();
-    assert(enhanced_grid_prepared && enhanced_grid_count == 2);
-    assert(enhanced_grid_icons[0] && enhanced_grid_icons[0]->alpha[0] == 160);
-    assert(strcmp(enhanced_grid_icons[0]->path, "icon.png") == 0);
-    assert(enhanced_grid_icons[1] && strcmp(enhanced_grid_icons[1]->path, legacy_icon) == 0);
+    SystemIcon *enhanced_icon = system_icon_get("AFirst");
+    assert(enhanced_icon && strcmp(enhanced_icon->path, "icon.png") == 0);
+    SystemIcon *fallback_icon = system_icon_get("NoArtwork");
+    assert(fallback_icon && strcmp(fallback_icon->path, legacy_icon) == 0);
 
     /* A monochrome 640x480 fixture exercises the production decoder and
      * allocation path without including fonts or SD activity in the sample. */
@@ -155,20 +170,39 @@ static void test_enhanced_art(const char *root) {
     assert(banner_is_animating() && allocations > 0);
     printf("640x480 BMP load: %zu malloc calls, %zu requested bytes, largest %zu bytes\n",
            allocations, allocation_bytes, largest_allocation);
+    measure_allocations = false;
+    prepare_enhanced_grid();
     allocations = 0;
     measure_allocations = true;
     for (int frame = 0; frame < 480 && banner_is_animating(); frame++) {
         prepare_enhanced_grid();
         banner_render(framebuffer);
     }
+    assert(allocations == 0 && banner_is_loaded() && !banner_is_animating());
     load_banner_for_view("NoArtwork", false, false); /* same resolved backdrop */
     measure_allocations = false;
     assert(allocations == 0 && banner_is_loaded() && !banner_is_animating());
     assert(framebuffer[0] == 0xf800);
     puts("PASS enhanced resource decode, native fallback, and zero mallocs on settled rendering");
 
-    banner_clear_enhanced();
-    assert(!banner_is_loaded());
+    assert(snprintf(path, sizeof path, "%s/Legacy", packs_root) < (int)sizeof path);
+    assert(mkdir(path, 0700) == 0);
+    theme_pack_count = 3;
+    strcpy(theme_pack_files[2], "Legacy");
+    strcpy(theme_pack_disp[2], "Legacy");
+    settings_theme_pack_idx = 2;
+    assert(enhanced_theme_sync() && !enhanced_theme);
+    assert(!banner_is_loaded() && !banner_is_animating());
+    assert(!system_icon_get("AFirst"));
+    assert(!enhanced_theme_sync());
+    settings_save_file();
+    settings_theme_pack_idx = 0;
+    settings_load_file();
+    assert(settings_theme_pack_idx == 2 && settings_graphical_home);
+    assert(settings_enhanced_theme_present && strcmp(settings_enhanced_theme, "legacy") == 0);
+    settings_theme_pack_idx = 1;
+    assert(enhanced_theme_sync() && enhanced_theme);
+    assert(system_icon_get("AFirst"));
     system_icons_clear();
     theme_resource_destroy(enhanced_theme);
     enhanced_theme = NULL;
@@ -183,8 +217,9 @@ int main(int argc, char **argv) {
     assert(strlen(argv[1]) < sizeof g_roms_path - 32);
     strcpy(g_roms_path, argv[1]);
     strcpy(current_path, ROMS_PATH);
-    write_fixture(test_settings, "load_recents=on\nexplore_layout=horizontal\n");
+    write_fixture(test_settings, "load_recents=on\nexplore_layout=horizontal\nenhanced_theme=legacy\n");
     settings_load_file();
+    assert(settings_enhanced_theme_present && strcmp(settings_enhanced_theme, "legacy") == 0);
     assert(!settings_graphical_home);
     assert(settings_load_recents);
     recent_games_add("nes", "Recent", "/test/Recent.nes");

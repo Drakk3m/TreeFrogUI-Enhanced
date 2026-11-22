@@ -1078,7 +1078,10 @@ static int settings_battery_color = 0;   /* "Nel Battery Mode": solid color ligh
 static int settings_stock_battery = 1;   /* cubevol's original fb1 indicator */
 static int settings_game_switcher = 1;  /* recents as box-art carousel: 0=off, 1=on */
 static int settings_graphical_home = 0;
+/* Obsolete P3 selector retained only for reversible settings-file
+ * compatibility. Theme packs are now selected by theme_pack_idx. */
 static char settings_enhanced_theme[THEME_RESOURCE_ID_MAX] = "default";
+static bool settings_enhanced_theme_present;
 
 static bool enhanced_theme_id_valid(const char *id) {
     size_t length = strlen(id);
@@ -1687,6 +1690,7 @@ static void settings_preview_row(const SRow *r) {
 
 static void settings_load_file(void) {
     settings_graphical_home = 0;
+    settings_enhanced_theme_present = false;
     strcpy(settings_enhanced_theme, "default");
     settings_override_meta_loaded = 0;
     settings_overrides.mask = 0;
@@ -1820,7 +1824,10 @@ static void settings_load_file(void) {
         } else if (strcmp(line, "graphical_home") == 0) {
             settings_graphical_home = (strcmp(val, "on") == 0) ? 1 : 0;
         } else if (strcmp(line, "enhanced_theme") == 0) {
-            if (enhanced_theme_id_valid(val)) strcpy(settings_enhanced_theme, val);
+            if (enhanced_theme_id_valid(val)) {
+                strcpy(settings_enhanced_theme, val);
+                settings_enhanced_theme_present = true;
+            }
         } else if (strcmp(line, "background_dim") == 0) {
             settings_background_dim = atoi(val);
         } else if (strcmp(line, "file_cache") == 0) {
@@ -2018,7 +2025,8 @@ static void settings_save_file(void) {
     fprintf(f, "hide_extensions=%s\n", onoff_names[settings_hide_extensions]);
     fprintf(f, "backgrounds=%s\n", onoff_names[settings_backgrounds]);
     fprintf(f, "graphical_home=%s\n", onoff_names[settings_graphical_home]);
-    fprintf(f, "enhanced_theme=%s\n", settings_enhanced_theme);
+    if (settings_enhanced_theme_present)
+        fprintf(f, "enhanced_theme=%s\n", settings_enhanced_theme);
     fprintf(f, "background_dim=%d\n", settings_background_dim);
     fprintf(f, "file_cache=%s\n", onoff_names[settings_file_cache]);
     fprintf(f, "battery_color=%s\n", onoff_names[settings_battery_color]);
@@ -5189,7 +5197,9 @@ static void render_system_carousel(uint16_t *fb) {
 #define SYSTEM_GRID_COLS 4
 #define SYSTEM_GRID_ROWS 2
 #define SYSTEM_GRID_PAGE (SYSTEM_GRID_COLS * SYSTEM_GRID_ROWS)
-#define ENHANCED_THEME_BASE BANNER_DIR "/enhanced/themes"
+#ifndef FROGUI_THEME_PACK_ROOT
+#define FROGUI_THEME_PACK_ROOT BANNER_DIR "/theme-packs"
+#endif
 
 #define SYSTEM_ICON_MAX_W   160
 #define SYSTEM_ICON_MAX_H   160
@@ -5209,7 +5219,7 @@ static char system_icon_missing[SYSTEM_ICON_MISSING_N][512];
 static int system_icon_missing_count;
 
 static ThemeResourceManager *enhanced_theme;
-static char enhanced_theme_active_id[THEME_RESOURCE_ID_MAX];
+static char enhanced_theme_active_id[FONT_STR_MAX];
 static int enhanced_theme_active = -1;
 static bool enhanced_grid_prepared;
 static size_t enhanced_grid_count;
@@ -5227,23 +5237,29 @@ static void system_icons_clear(void) {
 }
 
 static bool enhanced_theme_sync(void) {
-    if (enhanced_theme_active == settings_graphical_home &&
-        strcmp(enhanced_theme_active_id, settings_enhanced_theme) == 0)
+    const char *selected_pack = settings_theme_pack_idx > 0 &&
+                                settings_theme_pack_idx < theme_pack_count
+                                ? theme_pack_files[settings_theme_pack_idx] : "";
+    bool pack_usable = settings_render_scheme_idx == 0 && selected_pack[0] != '\0';
+    if (enhanced_theme_active == (settings_graphical_home && pack_usable) &&
+        strcmp(enhanced_theme_active_id, selected_pack) == 0)
         return false;
     bool affected = enhanced_theme_active > 0 || settings_graphical_home;
-    enhanced_theme_active = settings_graphical_home;
-    strcpy(enhanced_theme_active_id, settings_enhanced_theme);
+    enhanced_theme_active = settings_graphical_home && pack_usable;
+    snprintf(enhanced_theme_active_id, sizeof enhanced_theme_active_id, "%s", selected_pack);
     theme_resource_destroy(enhanced_theme);
     enhanced_theme = NULL;
     if (affected) {
         system_icons_clear();
         banner_clear_enhanced();
     }
-    if (!settings_graphical_home || strcmp(settings_enhanced_theme, "none") == 0)
+    if (!settings_graphical_home || !pack_usable)
         return affected;
 
     char root[THEME_RESOURCE_PATH_MAX];
-    snprintf(root, sizeof root, ENHANCED_THEME_BASE "/%s", settings_enhanced_theme);
+    int root_length = snprintf(root, sizeof root, "%s/%s", FROGUI_THEME_PACK_ROOT, selected_pack);
+    if (root_length < 0 || (size_t)root_length >= sizeof root)
+        return affected;
     enhanced_theme = theme_resource_create(root, THEME_RESOURCE_CACHE_MAX);
     if (enhanced_theme &&
         (!theme_resource_load_manifest(enhanced_theme, "theme.ini") ||
