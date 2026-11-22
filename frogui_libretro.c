@@ -5206,6 +5206,9 @@ static void render_system_carousel(uint16_t *fb) {
 #define SYSTEM_GRID_ROWS 2
 #define SYSTEM_GRID_PAGE (SYSTEM_GRID_COLS * SYSTEM_GRID_ROWS)
 #define ENHANCED_HOME_VISIBLE 5
+enum EnhancedHomeItemKind { ENHANCED_HOME_PLATFORM, ENHANCED_HOME_RECENTS,
+                             ENHANCED_HOME_APPS, ENHANCED_HOME_SETTINGS };
+static enum EnhancedHomeItemKind enhanced_home_kind;
 #define ENHANCED_HOME_TRAVEL 3
 #ifndef FROGUI_THEME_PACK_ROOT
 #define FROGUI_THEME_PACK_ROOT BANNER_DIR "/theme-packs"
@@ -5339,7 +5342,7 @@ static bool load_enhanced_home_background(const char *folder) {
         settings_menu_active || viewing_activity || !settings_backgrounds ||
         settings_wallpaper_idx > 0) return false;
     ThemeResourceDescriptor resource;
-    if (enhanced_platform_resource(folder, "background", &resource) &&
+    if (folder[0] && enhanced_platform_resource(folder, "background", &resource) &&
         use_enhanced_background(&resource)) return true;
     return theme_resource_resolve(enhanced_theme, "home.background", &resource) &&
            use_enhanced_background(&resource);
@@ -5495,14 +5498,39 @@ static bool enhanced_home_motion_enabled(void) {
     return settings_anim && (!presentation || !presentation->reduced_motion);
 }
 
+/* Enhanced root entries are directories after the existing scanner filter,
+ * with up to one native Favorites sentinel prepended to the listing. */
+static int enhanced_home_platform_first(void) {
+    return entry_count > 0 && !entries[0].is_dir;
+}
+
+static int enhanced_home_platform_count(void) {
+    return entry_count - enhanced_home_platform_first();
+}
+
+static int enhanced_home_index(int platforms) {
+    if (enhanced_home_kind != ENHANCED_HOME_PLATFORM)
+        return platforms + enhanced_home_kind - ENHANCED_HOME_RECENTS;
+    int platform = selected_index - enhanced_home_platform_first();
+    return platform >= 0 && platform < platforms ? platform : 0;
+}
+
+static enum EnhancedHomeItemKind enhanced_home_item_kind(int index, int platforms) {
+    return index < platforms ? ENHANCED_HOME_PLATFORM
+         : ENHANCED_HOME_RECENTS + index - platforms;
+}
+
 static bool enhanced_home_is_animating(void) {
     return enhanced_home_view() && enhanced_home_frame <= SYSTEM_CAROUSEL_FRAMES;
 }
 
 static void enhanced_home_move(int direction) {
     NavHorizontalWindow window;
-    nav_window_init(&window, entry_count, ENHANCED_HOME_VISIBLE, selected_index);
-    if (!nav_window_move(&window, entry_count, ENHANCED_HOME_VISIBLE, direction)) return;
+    int platforms = enhanced_home_platform_count();
+    int count = platforms + 3;
+    int before = enhanced_home_index(platforms);
+    nav_window_init(&window, count, ENHANCED_HOME_VISIBLE, before);
+    if (!nav_window_move(&window, count, ENHANCED_HOME_VISIBLE, direction)) return;
 
     enhanced_home_from_offset = enhanced_grid_prepared
                                ? enhanced_home_visible_offset : (float)scroll_offset;
@@ -5512,31 +5540,38 @@ static void enhanced_home_move(int direction) {
         enhanced_home_from_offset = window.offset - ENHANCED_HOME_TRAVEL;
     if (enhanced_home_from_offset > window.offset + ENHANCED_HOME_TRAVEL)
         enhanced_home_from_offset = window.offset + ENHANCED_HOME_TRAVEL;
-    enhanced_home_previous = selected_index;
-    selected_index = window.selected;
+    enhanced_home_previous = before;
+    enhanced_home_kind = enhanced_home_item_kind(window.selected, platforms);
+    if (enhanced_home_kind == ENHANCED_HOME_PLATFORM)
+        selected_index = window.selected + enhanced_home_platform_first();
     scroll_offset = window.offset;
-    enhanced_home_target = selected_index;
+    enhanced_home_target = window.selected;
     enhanced_home_frame = enhanced_home_motion_enabled() ? 0 : SYSTEM_CAROUSEL_FRAMES;
 }
 
 /* Resolve the entire transition's visible span on state changes. Painting
  * borrows pixels from the existing LRU and never calls an artwork loader. */
 static void prepare_enhanced_grid(void) {
-    if (!enhanced_home_view() || entry_count <= 0) {
+    if (!enhanced_home_view()) {
         enhanced_grid_prepared = false;
         enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES + 1;
         enhanced_home_target = -1;
         return;
     }
+    int platform_first = enhanced_home_platform_first();
+    int platforms = entry_count - platform_first;
     NavHorizontalWindow window;
-    nav_window_init(&window, entry_count, ENHANCED_HOME_VISIBLE, selected_index);
-    selected_index = window.selected;
+    nav_window_init(&window, platforms + 3, ENHANCED_HOME_VISIBLE,
+                    enhanced_home_index(platforms));
+    enhanced_home_kind = enhanced_home_item_kind(window.selected, platforms);
     scroll_offset = window.offset;
+    if (enhanced_home_kind == ENHANCED_HOME_PLATFORM)
+        selected_index = window.selected + platform_first;
 
-    if (!enhanced_grid_prepared || enhanced_home_target != selected_index ||
+    if (!enhanced_grid_prepared || enhanced_home_target != window.selected ||
         !enhanced_home_motion_enabled()) {
         enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES + 1;
-        enhanced_home_target = selected_index;
+        enhanced_home_target = window.selected;
     }
     if (enhanced_home_frame >= SYSTEM_CAROUSEL_FRAMES)
         enhanced_home_visible_offset = enhanced_home_from_offset = (float)scroll_offset;
@@ -5547,17 +5582,21 @@ static void prepare_enhanced_grid(void) {
     int end = (int)ceilf(enhanced_home_from_offset);
     if (end < scroll_offset) end = scroll_offset;
     end += ENHANCED_HOME_VISIBLE;
-    if (end > entry_count) end = entry_count;
+    if (end > platforms + 3) end = platforms + 3;
     size_t count = (size_t)(end - first);
     bool same = enhanced_grid_prepared && enhanced_grid_first == first &&
                 enhanced_grid_count == count && system_icon_pack == settings_icon_pack_idx;
-    for (size_t i = 0; same && i < count; i++)
-        same = strcmp(enhanced_grid_names[i], entries[first + i].name) == 0;
+    for (size_t i = 0; same && i < count; i++) {
+        int index = first + (int)i;
+        const char *name = index < platforms ? entries[platform_first + index].name : "";
+        same = strcmp(enhanced_grid_names[i], name) == 0;
+    }
     if (same) return;
     for (size_t i = 0; i < count; i++) {
-        const char *name = entries[first + i].name;
+        int index = first + (int)i;
+        const char *name = index < platforms ? entries[platform_first + index].name : "";
         strcpy(enhanced_grid_names[i], name);
-        enhanced_grid_icons[i] = system_icon_get(name);
+        enhanced_grid_icons[i] = name[0] ? system_icon_get(name) : NULL;
     }
     enhanced_grid_first = first;
     enhanced_grid_count = count;
@@ -5567,13 +5606,40 @@ static void prepare_enhanced_grid(void) {
 static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
                              int x, int y, int w, int h);
 
-static const char *enhanced_home_label(int index) {
-    if (index >= 0 && index < entry_count) {
-        if (entries[index].is_dir) return system_display_name(entries[index].name);
-        if (strcmp(entries[index].name, FAVOURITES_ENTRY_NAME) == 0)
-            return tr_or("folder.favourites", "Favourites");
+static const char *enhanced_home_label(int index, int platforms) {
+    switch (enhanced_home_item_kind(index, platforms)) {
+    case ENHANCED_HOME_RECENTS:  return tr("tab.recents");
+    case ENHANCED_HOME_APPS:     return tr("tab.apps");
+    case ENHANCED_HOME_SETTINGS: return tr("tab.settings");
+    default: return system_display_name(entries[enhanced_home_platform_first() + index].name);
     }
-    return "";
+}
+
+/* Small native RGB565 symbols keep all three utilities usable with any pack. */
+static void enhanced_home_utility_icon(uint16_t *fb, enum EnhancedHomeItemKind kind,
+                                       int cx, int cy, int size, uint16_t color) {
+    int unit = size / 14;
+    if (unit < 1) return;
+    if (kind == ENHANCED_HOME_RECENTS) {
+        render_rounded_rect(fb, cx - 5 * unit, cy - 5 * unit, 10 * unit,
+                            10 * unit, 3 * unit, color);
+        render_rounded_rect(fb, cx - 4 * unit, cy - 4 * unit, 8 * unit,
+                            8 * unit, 2 * unit, COLOR_BG);
+        render_fill_rect(fb, cx - unit / 2, cy - 3 * unit, unit, 4 * unit, color);
+        render_fill_rect(fb, cx, cy, 3 * unit, unit, color);
+    } else if (kind == ENHANCED_HOME_APPS) {
+        for (int row = 0; row < 2; row++)
+            for (int col = 0; col < 2; col++)
+                render_rounded_rect(fb, cx + (6 * col - 5) * unit,
+                                    cy + (6 * row - 5) * unit, 4 * unit, 4 * unit, unit, color);
+    } else {
+        for (int row = 0; row < 3; row++) {
+            int y = cy + (4 * row - 4) * unit;
+            render_fill_rect(fb, cx - 5 * unit, y, 10 * unit, unit, color);
+            render_rounded_rect(fb, cx + (row == 1 ? 2 : -3) * unit, y - unit,
+                                2 * unit, 3 * unit, unit, color);
+        }
+    }
 }
 
 static void render_enhanced_home(uint16_t *fb) {
@@ -5585,66 +5651,82 @@ static void render_enhanced_home(uint16_t *fb) {
     enhanced_home_visible_offset = enhanced_home_from_offset +
         ((float)scroll_offset - enhanced_home_from_offset) * eased;
 
-    const ThemePresentation *presentation = theme_resource_presentation(enhanced_theme);
-    const int margin = UI_S(24);
+    const int margin = SCREEN_WIDTH * 5 / 100;
     const int step = (SCREEN_WIDTH - 2 * margin) / ENHANCED_HOME_VISIBLE;
-    const int center_y = SCREEN_HEIGHT / 3;
-    const int spacing = UI_S(presentation ? presentation->icon_spacing : 8);
-    const int scale = presentation ? presentation->icon_scale_percent : 115;
-    const int base = (step - spacing) * 100 / (scale + 5);
-    render_theme_heading(fb, MAIN_TAB_GAMES, COLOR_BG, "EXPLORE CONTENT");
+    const int center_y = SCREEN_HEIGHT * 39 / 100;
+    const int neighbor = step * 59 / 100;
+    const int focus = step * 104 / 100;
+    const int platforms = enhanced_home_platform_count();
+    const int selected = enhanced_home_index(platforms);
+    render_battery(fb, frogui_battery_pct());
+
     for (size_t slot = 0; enhanced_grid_prepared && slot < enhanced_grid_count; slot++) {
         int index = enhanced_grid_first + (int)slot;
         int center = margin + step / 2 + (int)((index - enhanced_home_visible_offset) * step);
         if (center + step / 2 <= 0 || center - step / 2 >= SCREEN_WIDTH) continue;
-        bool active = index == selected_index;
+        bool active = index == selected;
         float zoom = active ? eased : index == enhanced_home_previous ? 1.0f - eased : 0.0f;
-        int size = base + (int)(base * (scale - 100) * zoom / 100.0f);
+        int size = neighbor + (int)((focus - neighbor) * zoom);
+        int padding = UI_S(3);
+        int edge = center < SCREEN_WIDTH - center ? center : SCREEN_WIDTH - center;
+        /* The selected item enters within the panel at the left edge during
+         * reverse scroll. The aspect-fit box grows to its settled size there. */
+        if (active && size / 2 + padding > edge) size = 2 * (edge - padding);
+        if (size <= 0) continue;
         int x = center - size / 2;
         int y = center_y - size / 2;
         if (active)
-            render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4),
-                                      size + UI_S(8), size + UI_S(8),
-                                      UI_S(9), COLOR_SELECT_BG, 192);
+            render_rounded_rect_alpha(fb, x - padding, y - padding, size + 2 * padding,
+                                      size + 2 * padding, UI_S(9), COLOR_SELECT_BG, 140);
 
-        const char *label = enhanced_home_label(index);
+        uint16_t color = active ? COLOR_SELECT_TEXT : COLOR_TEXT;
         SystemIcon *icon = enhanced_grid_icons[slot];
-        if (icon) {
+        if (index >= platforms) {
+            enhanced_home_utility_icon(fb, enhanced_home_item_kind(index, platforms),
+                                       center, center_y, size, color);
+        } else if (icon) {
             system_icon_draw(fb, icon, x, y, size, size);
         } else {
+            const char *label = enhanced_home_label(index, platforms);
             unsigned char initial = (unsigned char)label[0];
             if (initial >= 'a' && initial <= 'z') initial -= 'a' - 'A';
             char initials[2] = {initial && initial < 128 ? (char)initial : '?', 0};
+            int inset = size / 6;
+            render_rounded_rect_alpha(fb, x + inset, y + inset, size - 2 * inset,
+                                      size - 2 * inset, UI_S(7), COLOR_BG, 180);
             font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
                            center - font_measure_text(initials) / 2,
-                           center_y - font_get_size() / 2, initials,
-                           active ? COLOR_SELECT_TEXT : COLOR_TEXT);
+                           center_y - font_get_size() / 2, initials, COLOR_TEXT);
         }
-
     }
-    if (entry_count > 0) {
-        const char *label = enhanced_home_label(selected_index);
-        int label_y = center_y + step / 2 + UI_S(10);
-        int label_width = SCREEN_WIDTH - 2 * margin - UI_S(16);
-        int background_width = font_measure_text(label) + UI_S(16);
-        if (background_width > SCREEN_WIDTH - 2 * margin) background_width = SCREEN_WIDTH - 2 * margin;
-        render_rounded_rect_alpha(fb, margin, label_y, background_width,
-                                  ITEM_HEIGHT, UI_S(6), COLOR_SELECT_BG, 192);
-        font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
-                               margin + UI_S(8), label_y, label, COLOR_SELECT_TEXT,
-                               margin + UI_S(8), label_y, label_width, ITEM_HEIGHT);
+    const char *label = enhanced_home_label(selected, platforms);
+    int label_y = SCREEN_HEIGHT * 73 / 100;
+    int text = font_measure_text(label);
+    int title_width = SCREEN_WIDTH - 2 * margin;
+    if (text > title_width - UI_S(16)) text = title_width - UI_S(16);
+    int title_x = (SCREEN_WIDTH - text) / 2;
+    render_rounded_rect_alpha(fb, title_x - UI_S(8), label_y, text + UI_S(16),
+                              ITEM_HEIGHT, UI_S(6), COLOR_BG, 200);
+    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, title_x, label_y,
+                           label, COLOR_TEXT, title_x, label_y, text, ITEM_HEIGHT);
+    const char *legend = tr("legend.enter_back");
+    while (*legend == ' ') legend++;
+    const char *separator = strstr(legend, "  ");
+    char confirmation[96] = "A";
+    if (separator && separator - legend < (int)sizeof confirmation)
+        snprintf(confirmation, sizeof confirmation, "%.*s", (int)(separator - legend), legend);
+    font_set_render_scale(85);
+    int hint_y = SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(4);
+    font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
+                   SCREEN_WIDTH - margin - font_measure_text(confirmation), hint_y,
+                   confirmation, COLOR_LEGEND);
+    if (favorites_get_count() > 0) {
+        char favorites_hint[96];
+        snprintf(favorites_hint, sizeof favorites_hint, "Y  %s", tr("folder.favourites"));
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, margin, hint_y,
+                       favorites_hint, COLOR_LEGEND);
     }
-    char shortcuts[96];
-    if (settings_apps_in_settings)
-        snprintf(shortcuts, sizeof shortcuts, "START  %s", tr("tab.settings"));
-    else
-        snprintf(shortcuts, sizeof shortcuts, "START  %s    R1  %s",
-                 tr("tab.settings"), tr("tab.apps"));
-    int hint_y = SCREEN_HEIGHT - ITEM_HEIGHT * 2;
-    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, PADDING, hint_y,
-                           shortcuts, COLOR_LEGEND, PADDING, hint_y,
-                           SCREEN_WIDTH - PADDING * 2, ITEM_HEIGHT);
-    render_legend(fb, LEGEND_X_NONE, entry_count > 0, 1);
+    font_set_render_scale(100);
 }
 
 static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
@@ -6142,7 +6224,8 @@ static void handle_input(void) {
     bool select_action = select_pending && !input_is_pressed(FROG_BTN_SELECT);
     if (select_action) select_pending = false;
     if (select_action && !viewing_recents && !viewing_favourites && !viewing_search &&
-        selected_index < entry_count &&
+        (!enhanced_home_view() || enhanced_home_kind == ENHANCED_HOME_PLATFORM) &&
+        selected_index >= 0 && selected_index < entry_count &&
         strcmp(entries[selected_index].name, SETTINGS_ENTRY_NAME) != 0 &&
         strcmp(entries[selected_index].name, RECENTS_ENTRY_NAME) != 0 &&
         strcmp(entries[selected_index].name, FAVOURITES_ENTRY_NAME) != 0) {
@@ -6254,6 +6337,23 @@ static void handle_input(void) {
                 favorites_toggle(core, game_name, rom_path);
                 ui_toast_show(was_favourite ? "Removed from Favourites" : "Added to Favourites");
             }
+        }
+    }
+
+    if (enhanced_home_view()) {
+        int platforms = enhanced_home_platform_count();
+        enum EnhancedHomeItemKind kind = enhanced_home_item_kind(enhanced_home_index(platforms), platforms);
+        if (input_was_pressed(FROG_BTN_A) && kind != ENHANCED_HOME_PLATFORM) {
+            if (kind == ENHANCED_HOME_SETTINGS) open_enhanced_settings();
+            else switch_main_tab(kind == ENHANCED_HOME_RECENTS ? MAIN_TAB_RECENTS : MAIN_TAB_APPS);
+            return;
+        }
+        if (input_was_pressed(FROG_BTN_Y) && favorites_get_count() > 0) {
+            games_tab_selected = selected_index;
+            save_games_tab_entries();
+            ui_transition_start(1);
+            enter_favourites_view();
+            return;
         }
     }
 
@@ -6374,6 +6474,9 @@ static void handle_input(void) {
             ui_transition_start(-1);
             viewing_favourites = false;
             scan_directory(ROMS_PATH);
+            if (settings_graphical_home && games_tab_selected >= 0 &&
+                games_tab_selected < games_tab_entry_count)
+                select_visible_entry(visible_entry_named(games_tab_entries[games_tab_selected].name));
             strncpy(current_path, ROMS_PATH, MAX_PATH_LEN-1);
             switch_home_open = render_theme_current()->home_layout != RENDER_HOME_DEFAULT;
         } else if (!settings_graphical_home &&
@@ -6747,6 +6850,7 @@ static void render_port_migration(const PortMigration *port, int index,
 void retro_init(void) {
     dbg("retro_init start");
     nav_model_init(&enhanced_settings_navigation, 0);
+    enhanced_home_kind = ENHANCED_HOME_PLATFORM;
     settings_apps_origin = false;
     viewing_info = false;
     input_log_start();
@@ -7484,6 +7588,8 @@ void retro_run(void) {
         char sel_path[MAX_PATH_LEN];
         if (settings_menu_active) {
             banner_path = "settings";
+        } else if (enhanced_home_view() && enhanced_home_kind != ENHANCED_HOME_PLATFORM) {
+            banner_path = "";
         } else if (!viewing_recents && !viewing_favourites &&
                    selected_index >= 0 && selected_index < entry_count) {
             if (strcmp(entries[selected_index].name, SETTINGS_ENTRY_NAME) == 0) {

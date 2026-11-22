@@ -26,7 +26,12 @@ DIR *__wrap_opendir(const char *path) {
 int __real_mkdir(const char *path, mode_t mode);
 int __wrap_mkdir(const char *path, mode_t mode) {
     char mapped[MAX_PATH_LEN];
-    return __real_mkdir(cache_fixture_path(path, mapped, sizeof mapped), mode);
+    path = cache_fixture_path(path, mapped, sizeof mapped);
+    if (strncmp(path, "/mnt/sdcard/", 12) == 0) {
+        errno = EACCES;
+        return -1;
+    }
+    return __real_mkdir(path, mode);
 }
 
 int __real_unlink(const char *path);
@@ -303,15 +308,45 @@ static void test_ribbon(const char *root) {
         render_enhanced_home(framebuffer);
         assert(enhanced_grid_count <= SYSTEM_GRID_PAGE);
     }
+    int platforms = enhanced_home_platform_count();
     assert(selected_index == entry_count - 1);
-    assert(scroll_offset == entry_count - ENHANCED_HOME_VISIBLE);
-    char selected[sizeof entries[0].name];
-    strcpy(selected, entries[selected_index].name);
+    assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
+    assert(enhanced_home_index(platforms) == platforms + 2);
+    assert(scroll_offset == platforms + 3 - ENHANCED_HOME_VISIBLE);
+    press(FROG_BTN_RIGHT);
+    assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
+    press(FROG_BTN_A);
+    assert(settings_menu_active);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_SETTINGS);
+
+    press(FROG_BTN_LEFT);
+    assert(enhanced_home_kind == ENHANCED_HOME_APPS);
+    press(FROG_BTN_START);
+    assert(settings_menu_active);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_APPS);
+    settings_apps_in_settings = 1;
+    press(FROG_BTN_A);
+    assert(viewing_apps);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_APPS);
+    settings_apps_in_settings = 0;
     press(FROG_BTN_R1);
     assert(viewing_apps);
     press(FROG_BTN_B);
-    prepare_enhanced_grid();
-    assert(enhanced_home_view() && strcmp(entries[selected_index].name, selected) == 0);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_APPS);
+
+    press(FROG_BTN_LEFT);
+    assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    press(FROG_BTN_START);
+    assert(settings_menu_active);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    press(FROG_BTN_A);
+    assert(viewing_recents);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_RECENTS);
 
     settings_file_cache = 1;
     scan_directory(ROMS_PATH);
@@ -329,7 +364,15 @@ static void test_ribbon(const char *root) {
     press(FROG_BTN_A);
     assert(!settings_menu_active && entry_count == stored_count + 1);
     prepare_enhanced_grid();
-    assert(scroll_offset == selected_index || scroll_offset == entry_count - ENHANCED_HOME_VISIBLE);
+    assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    assert(enhanced_home_index(enhanced_home_platform_count()) == platforms + 1);
+    assert(scroll_offset == enhanced_home_platform_count() + 3 - ENHANCED_HOME_VISIBLE);
+    press(FROG_BTN_RIGHT);
+    assert(enhanced_home_kind == ENHANCED_HOME_APPS);
+    press(FROG_BTN_RIGHT);
+    assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
+    press(FROG_BTN_RIGHT);
+    assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
 
     ThemeResourceManager *theme = theme_resource_create(root, THEME_RESOURCE_CACHE_MAX);
     assert(theme);
@@ -343,19 +386,44 @@ static void test_ribbon(const char *root) {
     assert(!enhanced_home_is_animating() && enhanced_home_visible_offset == scroll_offset);
     theme_resource_destroy(enhanced_theme);
     enhanced_theme = NULL;
-    entry_count = 0;
+    /* The native Favorites sentinel is not a platform in the projection. */
+    strcpy(entries[0].name, FAVOURITES_ENTRY_NAME);
+    entries[0].is_dir = 0;
+    assert(enhanced_home_platform_count() == entry_count - 1);
+    enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+    selected_index = 1;
+    prepare_enhanced_grid();
+    assert(enhanced_home_index(enhanced_home_platform_count()) == 0);
+    assert(strcmp(enhanced_grid_names[0], entries[1].name) == 0);
+
+    /* Zero and one platform both retain exactly three utilities. */
+    entries[0] = entries[1];
+    entry_count = 1;
     selected_index = scroll_offset = 0;
     prepare_enhanced_grid();
-    press(FROG_BTN_RIGHT);
     render_enhanced_home(framebuffer);
-    assert(!enhanced_grid_prepared && selected_index == 0);
+    assert(enhanced_grid_count == 4 && enhanced_home_kind == ENHANCED_HOME_PLATFORM);
+    press(FROG_BTN_RIGHT);
+    assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    entry_count = 0;
+    enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+    prepare_enhanced_grid();
+    render_enhanced_home(framebuffer);
+    assert(enhanced_grid_count == 3 && enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    press(FROG_BTN_LEFT);
+    assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    press(FROG_BTN_RIGHT);
+    press(FROG_BTN_RIGHT);
+    press(FROG_BTN_RIGHT);
+    assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
     free(framebuffer);
     framebuffer = NULL;
-    puts("PASS empty Home, ribbon scrolling, interrupted motion, Apps, cache rebuild, and reduced motion");
+    puts("PASS unified ribbon, Settings context, utility routes, cache rebuild, and reduced motion");
 }
 
 int main(int argc, char **argv) {
     assert(argc == 2);
+    assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
     assert(snprintf(test_settings, sizeof test_settings, "%s/settings.txt", argv[1])
            < (int)sizeof test_settings);
     assert(strlen(argv[1]) < sizeof g_roms_path - 32);
@@ -444,6 +512,8 @@ int main(int argc, char **argv) {
     assert(settings_menu_active);
     press(FROG_BTN_B);
     assert(!settings_menu_active);
+    assert(enhanced_home_kind == ENHANCED_HOME_PLATFORM);
+    assert(strcmp(entries[selected_index].name, "NoArtwork") == 0);
     strcpy(g_roms_path, argv[1]);
     strcpy(current_path, ROMS_PATH);
 
