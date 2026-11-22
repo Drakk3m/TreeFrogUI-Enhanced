@@ -1,5 +1,6 @@
 #include "banner.h"
 #include "render.h"
+#include "theme_resource.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -7,8 +8,49 @@
 #include <pthread.h>
 #include <unistd.h>
 
+/* Limit the native decoder only while processing untrusted Enhanced art.
+ * The legacy loader and its worker run with the normal allocator. Charging
+ * reallocations at their full requested size also bounds cumulative work. */
+static __thread int limited_decode;
+static __thread size_t decode_remaining;
+
+static int reserve_decode_memory(size_t size) {
+    if (!limited_decode) return 1;
+    if (size > 2u * 1024u * 1024u || size > decode_remaining) return 0;
+    decode_remaining -= size;
+    return 1;
+}
+
+static void *image_malloc(size_t size) {
+    return reserve_decode_memory(size) ? malloc(size) : NULL;
+}
+
+static void *image_realloc(void *memory, size_t size) {
+    return reserve_decode_memory(size) ? realloc(memory, size) : NULL;
+}
+
+#define STBI_MALLOC image_malloc
+#define STBI_REALLOC image_realloc
+#define STBI_FREE free
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+unsigned char *banner_decode_enhanced_image(const unsigned char *encoded, int size,
+                                            int width, int height, int channels) {
+    if (size <= 0 || (unsigned)size > THEME_RESOURCE_FILE_MAX ||
+        width <= 0 || width > THEME_BACKGROUND_MAX_WIDTH ||
+        height <= 0 || height > THEME_BACKGROUND_MAX_HEIGHT ||
+        (channels != 3 && channels != 4)) return NULL;
+    int w, h, components;
+    unsigned char *pixels = NULL;
+    limited_decode = 1;
+    decode_remaining = 6u * 1024u * 1024u;
+    if (stbi_info_from_memory(encoded, size, &w, &h, &components) &&
+        w == width && h == height)
+        pixels = stbi_load_from_memory(encoded, size, &w, &h, &components, channels);
+    limited_decode = 0;
+    return pixels;
+}
 
 static uint16_t *banner_buf = NULL;   /* current (target) banner */
 static uint16_t *banner_prev = NULL;  /* outgoing banner during crossfade */
@@ -24,6 +66,7 @@ static int banner_pending_mode;
 static uint16_t banner_pending_bg;
 static int banner_pending_light;
 static int banner_pending_row;
+static int banner_pending_enhanced;
 static char banner_pending_key[600] = "";
 static char banner_requested_key[600] = "";
 static char banner_ready_key[600] = "";
@@ -420,6 +463,63 @@ static void banner_apply_ready(void) {
     bcache_store(key, banner_buf, SCREEN_WIDTH * SCREEN_HEIGHT);
 }
 
+static int banner_queue_image(unsigned char *rgb, int width, int height,
+                              int mode, uint16_t bg, const char *key, int enhanced) {
+    stbi_image_free(banner_pending_img);
+    banner_pending_img = NULL;
+    free(banner_pending_buf);
+    banner_pending_buf = malloc((size_t)SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(*banner_pending_buf));
+    if (!banner_pending_buf) return 0;
+    banner_pending_img = rgb;
+    banner_pending_w = width;
+    banner_pending_h = height;
+    banner_pending_mode = mode;
+    banner_pending_bg = bg;
+    banner_pending_light = 100 - banner_dim;
+    banner_pending_row = 0;
+    banner_pending_enhanced = enhanced;
+    snprintf(banner_pending_key, sizeof banner_pending_key, "%s", key);
+    fade_frame = FADE_FRAMES;
+    return 1;
+}
+
+static void banner_enhanced_key(const char *id, int mode, uint16_t bg,
+                                char *key, size_t size) {
+    snprintf(key, size, "enhanced|%s|%d|%u|%d|%dx%d",
+             id, mode, (unsigned)bg, banner_dim, SCREEN_WIDTH, SCREEN_HEIGHT);
+}
+
+int banner_enhanced_current(const char *id, int mode, uint16_t bg) {
+    char key[sizeof banner_active_key];
+    banner_enhanced_key(id, mode, bg, key, sizeof key);
+    if ((banner_pending_img && strcmp(key, banner_pending_key) == 0) ||
+        (banner_loaded && !banner_pending_img && strcmp(key, banner_active_key) == 0)) {
+        banner_request_clear();
+        return 1;
+    }
+    return 0;
+}
+
+int banner_load_enhanced(const char *id, unsigned char *rgb, int width, int height,
+                         int mode, uint16_t bg) {
+    char key[sizeof banner_active_key];
+    banner_enhanced_key(id, mode, bg, key, sizeof key);
+    if (!banner_queue_image(rgb, width, height, mode, bg, key, 1))
+        return 0;
+    banner_request_clear();
+    return 1;
+}
+
+void banner_clear_enhanced(void) {
+    int active = strncmp(banner_active_key, "enhanced|", 9) == 0;
+    if (active || (banner_pending_img && banner_pending_enhanced))
+        banner_clear();
+    if (active) {
+        free(banner_buf);
+        banner_buf = NULL;
+    }
+}
+
 static void banner_load_common(const char *path, int mode, uint16_t bg) {
     int sw = SCREEN_WIDTH, sh = SCREEN_HEIGHT, npix = sw * sh;
     char key[600];
@@ -479,25 +579,10 @@ static void banner_load_common(const char *path, int mode, uint16_t bg) {
         return;
     }
 
-    /* Decode once, then transform a small number of rows per frame. The old
-     * implementation did the full-screen rescale here, blocking input while
-     * scrolling through systems on the SF3000. */
-    banner_pending_img = img;
-    if (!banner_pending_buf)
-        banner_pending_buf = malloc((size_t)npix * sizeof(uint16_t));
-    if (!banner_pending_buf) {
-        stbi_image_free(banner_pending_img);
-        banner_pending_img = NULL;
-        return;
-    }
-    banner_pending_w = w;
-    banner_pending_h = h;
-    banner_pending_mode = mode;
-    banner_pending_bg = bg;
-    banner_pending_light = 100 - banner_dim;
-    banner_pending_row = 0;
-    snprintf(banner_pending_key, sizeof banner_pending_key, "%s", key);
-    fade_frame = FADE_FRAMES;
+    /* Convert a bounded number of rows per render, reusing the same path
+     * as externally supplied Enhanced art. */
+    if (!banner_queue_image(img, w, h, mode, bg, key, 0))
+        stbi_image_free(img);
 }
 
 void banner_load(const char *path) {
@@ -573,8 +658,10 @@ void banner_render(uint16_t *framebuffer) {
             banner_pending_buf = NULL;
             banner_loaded = 1;
             snprintf(banner_active_key, sizeof banner_active_key, "%s", banner_pending_key);
-            bcache_store(banner_active_key, banner_buf, sw * sh);
-            banner_disk_cache_store(banner_active_key, banner_buf, (size_t)sw * sh * 2);
+            if (!banner_pending_enhanced) {
+                bcache_store(banner_active_key, banner_buf, sw * sh);
+                banner_disk_cache_store(banner_active_key, banner_buf, (size_t)sw * sh * 2);
+            }
         }
     }
     if (!banner_loaded || !banner_buf || !framebuffer) return;

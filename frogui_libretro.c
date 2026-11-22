@@ -33,6 +33,7 @@
 #include "render.h"
 #include "common/pill_animation.h"
 #include "theme.h"
+#include "theme_resource.h"
 #include "frogui_settings.h"
 #include "theme_profile.h"
 #include "render_theme.h"
@@ -1077,6 +1078,18 @@ static int settings_battery_color = 0;   /* "Nel Battery Mode": solid color ligh
 static int settings_stock_battery = 1;   /* cubevol's original fb1 indicator */
 static int settings_game_switcher = 1;  /* recents as box-art carousel: 0=off, 1=on */
 static int settings_graphical_home = 0;
+static char settings_enhanced_theme[THEME_RESOURCE_ID_MAX] = "default";
+
+static bool enhanced_theme_id_valid(const char *id) {
+    size_t length = strlen(id);
+    if (!length || length >= sizeof settings_enhanced_theme) return false;
+    for (size_t i = 0; i < length; i++) {
+        unsigned char c = id[i];
+        if (!(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') &&
+            c != '-' && c != '_') return false;
+    }
+    return true;
+}
 static int settings_apps_in_settings = 0;
 static int settings_rounded_screenshots = 0;
 static int settings_language;
@@ -1674,6 +1687,7 @@ static void settings_preview_row(const SRow *r) {
 
 static void settings_load_file(void) {
     settings_graphical_home = 0;
+    strcpy(settings_enhanced_theme, "default");
     settings_override_meta_loaded = 0;
     settings_overrides.mask = 0;
     int settings_profile_version = 0;
@@ -1805,6 +1819,8 @@ static void settings_load_file(void) {
             settings_backgrounds = (strcmp(val, "on") == 0) ? 1 : 0;
         } else if (strcmp(line, "graphical_home") == 0) {
             settings_graphical_home = (strcmp(val, "on") == 0) ? 1 : 0;
+        } else if (strcmp(line, "enhanced_theme") == 0) {
+            if (enhanced_theme_id_valid(val)) strcpy(settings_enhanced_theme, val);
         } else if (strcmp(line, "background_dim") == 0) {
             settings_background_dim = atoi(val);
         } else if (strcmp(line, "file_cache") == 0) {
@@ -2002,6 +2018,7 @@ static void settings_save_file(void) {
     fprintf(f, "hide_extensions=%s\n", onoff_names[settings_hide_extensions]);
     fprintf(f, "backgrounds=%s\n", onoff_names[settings_backgrounds]);
     fprintf(f, "graphical_home=%s\n", onoff_names[settings_graphical_home]);
+    fprintf(f, "enhanced_theme=%s\n", settings_enhanced_theme);
     fprintf(f, "background_dim=%d\n", settings_background_dim);
     fprintf(f, "file_cache=%s\n", onoff_names[settings_file_cache]);
     fprintf(f, "battery_color=%s\n", onoff_names[settings_battery_color]);
@@ -2196,7 +2213,11 @@ static const char *system_display_name(const char *folder) {
 
 #define BANNER_DIR SDCARD_BASE "/frogui"
 
+static bool load_enhanced_home_background(const char *folder);
+
 static void load_banner_for_view(const char *path, bool is_recents, bool is_favourites) {
+    if (!is_recents && !is_favourites && load_enhanced_home_background(path ? get_basename(path) : ""))
+        return;
     if (settings_render_scheme_idx > 0) {
         char theme_background[512];
         if (render_theme_background(theme_background, sizeof theme_background) &&
@@ -5165,6 +5186,11 @@ static void render_system_carousel(uint16_t *fb) {
  * frogui/system-icons folder is the fallback. A short LRU keeps SD reads out of
  * normal navigation without retaining every system logo on low-memory devices. */
 #define SYSTEM_ICON_CACHE_N 12
+#define SYSTEM_GRID_COLS 4
+#define SYSTEM_GRID_ROWS 2
+#define SYSTEM_GRID_PAGE (SYSTEM_GRID_COLS * SYSTEM_GRID_ROWS)
+#define ENHANCED_THEME_BASE BANNER_DIR "/enhanced/themes"
+
 #define SYSTEM_ICON_MAX_W   160
 #define SYSTEM_ICON_MAX_H   160
 typedef struct {
@@ -5181,6 +5207,110 @@ static int system_icon_pack = -1;
 #define SYSTEM_ICON_MISSING_N 32
 static char system_icon_missing[SYSTEM_ICON_MISSING_N][512];
 static int system_icon_missing_count;
+
+static ThemeResourceManager *enhanced_theme;
+static char enhanced_theme_active_id[THEME_RESOURCE_ID_MAX];
+static int enhanced_theme_active = -1;
+static bool enhanced_grid_prepared;
+static size_t enhanced_grid_count;
+static char enhanced_grid_names[SYSTEM_GRID_PAGE][sizeof entries[0].name];
+static SystemIcon *enhanced_grid_icons[SYSTEM_GRID_PAGE];
+
+static void system_icons_clear(void) {
+    for (int i = 0; i < SYSTEM_ICON_CACHE_N; i++) {
+        free(system_icons[i].pixels);
+        free(system_icons[i].alpha);
+        memset(&system_icons[i], 0, sizeof system_icons[i]);
+    }
+    system_icon_missing_count = 0;
+    enhanced_grid_prepared = false;
+}
+
+static bool enhanced_theme_sync(void) {
+    if (enhanced_theme_active == settings_graphical_home &&
+        strcmp(enhanced_theme_active_id, settings_enhanced_theme) == 0)
+        return false;
+    bool affected = enhanced_theme_active > 0 || settings_graphical_home;
+    enhanced_theme_active = settings_graphical_home;
+    strcpy(enhanced_theme_active_id, settings_enhanced_theme);
+    theme_resource_destroy(enhanced_theme);
+    enhanced_theme = NULL;
+    if (affected) {
+        system_icons_clear();
+        banner_clear_enhanced();
+    }
+    if (!settings_graphical_home || strcmp(settings_enhanced_theme, "none") == 0)
+        return affected;
+
+    char root[THEME_RESOURCE_PATH_MAX];
+    snprintf(root, sizeof root, ENHANCED_THEME_BASE "/%s", settings_enhanced_theme);
+    enhanced_theme = theme_resource_create(root, THEME_RESOURCE_CACHE_MAX);
+    if (enhanced_theme &&
+        (!theme_resource_load_manifest(enhanced_theme, "theme.ini") ||
+         !theme_resource_supports_screen(enhanced_theme, SCREEN_WIDTH, SCREEN_HEIGHT))) {
+        theme_resource_destroy(enhanced_theme);
+        enhanced_theme = NULL;
+    }
+    return affected;
+}
+
+static bool enhanced_platform_resource(const char *folder, const char *role,
+                                       ThemeResourceDescriptor *resource) {
+    char id[THEME_RESOURCE_ID_MAX];
+    int length = snprintf(id, sizeof id, "platform.%s.%s", folder, role);
+    if (length < 0 || (size_t)length >= sizeof id) return false;
+    for (char *c = id; *c; c++)
+        if (*c >= 'A' && *c <= 'Z') *c = (char)(*c - 'A' + 'a');
+    return theme_resource_resolve(enhanced_theme, id, resource) != 0;
+}
+
+/* SD input is opened once for the native decoder. Read a bounded blob so the
+ * dimension probe and actual decode always see identical bytes. */
+static unsigned char *enhanced_decode_image(const ThemeResourceDescriptor *resource,
+                                            int *width, int *height, int output_channels) {
+    unsigned char *encoded = theme_resource_read(enhanced_theme, resource);
+    if (!encoded) return NULL;
+    unsigned char *pixels = NULL;
+    int encoded_size = (int)resource->file_size;
+    /* Re-check the bytes used for decode. Exporters publish complete packages,
+     * but a replaced file must not bypass the original descriptor's limits. */
+    bool png = encoded_size >= 29 && memcmp(encoded, "\x89PNG\r\n\x1a\n", 8) == 0 &&
+               encoded[24] == 8 && encoded[28] == 0;
+    bool jpeg = encoded_size >= 2 && encoded[0] == 0xff && encoded[1] == 0xd8;
+    bool bmp = encoded_size >= 2 && encoded[0] == 'B' && encoded[1] == 'M';
+    if (png || jpeg || bmp) {
+        *width = (int)resource->width;
+        *height = (int)resource->height;
+        pixels = banner_decode_enhanced_image(encoded, encoded_size, *width, *height,
+                                              output_channels);
+    }
+    free(encoded);
+    return pixels;
+}
+
+static bool use_enhanced_background(const ThemeResourceDescriptor *resource) {
+    if (resource->kind != THEME_RESOURCE_BACKGROUND) return false;
+    if (banner_enhanced_current(resource->path, settings_wallpaper_fit, COLOR_BG))
+        return true;
+    int width, height;
+    unsigned char *rgb = enhanced_decode_image(resource, &width, &height, 3);
+    if (rgb && banner_load_enhanced(resource->path, rgb, width, height,
+                                    settings_wallpaper_fit, COLOR_BG))
+        return true;
+    stbi_image_free(rgb);
+    return false;
+}
+
+static bool load_enhanced_home_background(const char *folder) {
+    if (!enhanced_theme || !settings_graphical_home || !icon_system_view() ||
+        settings_menu_active || viewing_activity || !settings_backgrounds ||
+        settings_wallpaper_idx > 0) return false;
+    ThemeResourceDescriptor resource;
+    if (enhanced_platform_resource(folder, "background", &resource) &&
+        use_enhanced_background(&resource)) return true;
+    return theme_resource_resolve(enhanced_theme, "home.background", &resource) &&
+           use_enhanced_background(&resource);
+}
 
 static SystemIcon *system_icon_cached(const char *path) {
     for (int i = 0; i < SYSTEM_ICON_CACHE_N; i++)
@@ -5238,18 +5368,8 @@ static const char *system_icon_path(const char *folder, char *path, size_t size)
     return NULL;
 }
 
-static SystemIcon *system_icon_get(const char *folder) {
-    if (system_icon_pack != settings_icon_pack_idx) {
-        for (int i = 0; i < SYSTEM_ICON_CACHE_N; i++) {
-            free(system_icons[i].pixels);
-            free(system_icons[i].alpha);
-            memset(&system_icons[i], 0, sizeof system_icons[i]);
-        }
-        system_icon_missing_count = 0;
-        system_icon_pack = settings_icon_pack_idx;
-    }
-    char path[512];
-    if (!system_icon_path(folder, path, sizeof path)) return NULL;
+static SystemIcon *system_icon_load(const char *path,
+                                    const ThemeResourceDescriptor *resource) {
     system_icon_clock++;
     SystemIcon *cached = system_icon_cached(path);
     if (cached) {
@@ -5263,7 +5383,8 @@ static SystemIcon *system_icon_get(const char *folder) {
             victim = i;
 
     int sw, sh, channels;
-    unsigned char *rgba = stbi_load(path, &sw, &sh, &channels, 4);
+    unsigned char *rgba = resource ? enhanced_decode_image(resource, &sw, &sh, 4)
+                                   : stbi_load(path, &sw, &sh, &channels, 4);
     if (!rgba || sw <= 0 || sh <= 0) {
         if (rgba) stbi_image_free(rgba);
         return NULL;
@@ -5315,6 +5436,48 @@ static SystemIcon *system_icon_get(const char *folder) {
     return &system_icons[victim];
 }
 
+static SystemIcon *system_icon_get(const char *folder) {
+    if (system_icon_pack != settings_icon_pack_idx) {
+        system_icons_clear();
+        system_icon_pack = settings_icon_pack_idx;
+    }
+    ThemeResourceDescriptor resource;
+    if (settings_graphical_home && enhanced_theme &&
+        enhanced_platform_resource(folder, "icon", &resource) &&
+        resource.kind == THEME_RESOURCE_PLATFORM_ICON) {
+        SystemIcon *icon = system_icon_load(resource.path, &resource);
+        if (icon) return icon;
+    }
+    char path[512];
+    return system_icon_path(folder, path, sizeof path) ? system_icon_load(path, NULL) : NULL;
+}
+
+/* Populate only on a view, page, listing or pack change. Long-label
+ * marquee redraws reuse these borrowed pointers without probing the SD. */
+static void prepare_enhanced_grid(void) {
+    if (!settings_graphical_home || !icon_system_view() ||
+        settings_menu_active || viewing_activity || viewing_info || entry_count <= 0 ||
+        selected_index < 0 || selected_index >= entry_count) {
+        enhanced_grid_prepared = false;
+        return;
+    }
+    int first = selected_index / SYSTEM_GRID_PAGE * SYSTEM_GRID_PAGE;
+    size_t count = (size_t)(entry_count - first);
+    if (count > SYSTEM_GRID_PAGE) count = SYSTEM_GRID_PAGE;
+    bool same = enhanced_grid_prepared && enhanced_grid_count == count &&
+                system_icon_pack == settings_icon_pack_idx;
+    for (size_t i = 0; same && i < count; i++)
+        same = strcmp(enhanced_grid_names[i], entries[first + i].name) == 0;
+    if (same) return;
+    for (size_t i = 0; i < count; i++) {
+        const char *name = entries[first + i].name;
+        strcpy(enhanced_grid_names[i], name);
+        enhanced_grid_icons[i] = system_icon_get(name);
+    }
+    enhanced_grid_count = count;
+    enhanced_grid_prepared = true;
+}
+
 static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
                              int x, int y, int w, int h) {
     if (!fb || !icon || !icon->pixels || !icon->alpha || w <= 0 || h <= 0) return;
@@ -5348,7 +5511,7 @@ static void render_system_grid(uint16_t *fb) {
         return;
     }
 
-    enum { COLS = 4, ROWS = 2, PAGE_SIZE = COLS * ROWS };
+    enum { COLS = SYSTEM_GRID_COLS, ROWS = SYSTEM_GRID_ROWS, PAGE_SIZE = SYSTEM_GRID_PAGE };
     int page = selected_index / PAGE_SIZE;
     int pages = (entry_count + PAGE_SIZE - 1) / PAGE_SIZE;
     int first = page * PAGE_SIZE;
@@ -5367,7 +5530,8 @@ static void render_system_grid(uint16_t *fb) {
         int y = top + row * (cell_h + gap);
         int active = idx == selected_index;
 
-        SystemIcon *icon = system_icon_get(entries[idx].name);
+        SystemIcon *icon = settings_graphical_home
+                         ? enhanced_grid_icons[slot] : system_icon_get(entries[idx].name);
         uint16_t tile_bg = COLOR_SELECT_BG;
         uint16_t tile_text = COLOR_SELECT_TEXT;
         if (active && icon && icon->bright) {
@@ -6527,14 +6691,12 @@ void retro_deinit(void) {
     banner_prefetch_clear();
     prefetch_last_bg = prefetch_last_wp = prefetch_last_wpfit = -1;
     prefetch_last_pack = prefetch_last_dim = prefetch_last_theme = prefetch_last_renderer = -1;
-    for (int i = 0; i < SYSTEM_ICON_CACHE_N; i++) {
-        free(system_icons[i].pixels);
-        free(system_icons[i].alpha);
-        system_icons[i].pixels = NULL;
-        system_icons[i].alpha = NULL;
-    }
+    system_icons_clear();
     system_icon_pack = -1;
-    system_icon_missing_count = 0;
+    theme_resource_destroy(enhanced_theme);
+    enhanced_theme = NULL;
+    enhanced_theme_active = -1;
+    banner_clear_enhanced();
     free(framebuffer); framebuffer = NULL;
     free(view_transition_old); view_transition_old = NULL;
     free(view_transition_out); view_transition_out = NULL;
@@ -6997,6 +7159,8 @@ void retro_run(void) {
     strncpy(old_path, current_path, sizeof old_path - 1);
     old_path[sizeof old_path - 1] = '\0';
     handle_input();
+    bool enhanced_theme_changed = enhanced_theme_sync();
+    prepare_enhanced_grid();
     RenderThemeScreen theme_screen = (settings_menu_active || viewing_info) ? RENDER_SCREEN_SETTINGS :
         viewing_recents ? RENDER_SCREEN_RECENTS :
         (viewing_apps || apps_browsing || viewing_activity) ? RENDER_SCREEN_APPS :
@@ -7113,14 +7277,17 @@ void retro_run(void) {
     static int  banner_last_dim = -1;   /* reload when background dim changes */
     static int  banner_last_renderer = -1;
     {
-        if (settings_backgrounds != prefetch_last_bg ||
+        if (enhanced_theme_changed || settings_backgrounds != prefetch_last_bg ||
             settings_wallpaper_idx != prefetch_last_wp ||
             settings_wallpaper_fit != prefetch_last_wpfit ||
             settings_theme_pack_idx != prefetch_last_pack ||
             settings_background_dim != prefetch_last_dim ||
             settings_theme_idx != prefetch_last_theme ||
             settings_render_scheme_idx != prefetch_last_renderer) {
-            prefetch_active_theme();
+            if (enhanced_theme)
+                banner_prefetch_clear();
+            else
+                prefetch_active_theme();
             prefetch_last_bg = settings_backgrounds;
             prefetch_last_wp = settings_wallpaper_idx;
             prefetch_last_wpfit = settings_wallpaper_fit;
@@ -7179,7 +7346,7 @@ void retro_run(void) {
                            settings_background_dim != banner_last_dim ||
                            settings_render_scheme_idx != banner_last_renderer);
         }
-        if (need_reload && !(viewing_recents && settings_game_switcher)) {
+        if ((need_reload || enhanced_theme_changed) && !(viewing_recents && settings_game_switcher)) {
             /* GameSwitcher paints its own full panel. Leave the Games banner
              * and its cache keys untouched while Recents is open, so returning
              * to Games does not decode the same background from SD again. */
