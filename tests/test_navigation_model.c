@@ -135,6 +135,16 @@ static void test_window(void) {
     assert(!nav_window_move(&window, 1, 4, -1));
     assert(!nav_window_move(&window, 1, 4, 1));
     assert(window.selected == 0 && window.offset == 0);
+    for (int count = 3; count <= 4; count++) {
+        nav_window_init(&window, count, 4, count - 1);
+        assert(window.selected == count - 1 && window.offset == 0);
+        assert(!nav_window_move(&window, count, 4, 1));
+        for (int index = count - 2; index >= 0; index--) {
+            assert(nav_window_move(&window, count, 4, -1));
+            assert(window.selected == index && window.offset == 0);
+        }
+        assert(!nav_window_move(&window, count, 4, -1));
+    }
     nav_window_init(&window, 7, 4, 0);
     assert(!nav_window_move(&window, 7, 4, -1));
     for (int index = 1; index < 7; index++) {

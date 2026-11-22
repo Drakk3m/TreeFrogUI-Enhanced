@@ -3607,6 +3607,10 @@ static void switch_main_tab(int target) {
             if (scroll_offset > selected_index) scroll_offset = selected_index;
             if (scroll_offset < 0) scroll_offset = 0;
         }
+        if (settings_graphical_home) {
+            int max_offset = entry_count > 5 ? entry_count - 5 : 0;
+            if (scroll_offset > max_offset) scroll_offset = max_offset;
+        }
     } else if (target == MAIN_TAB_APPS) {
         settings_menu_active = false;
         scan_apps_tab();
@@ -5036,11 +5040,15 @@ static void system_carousel_start(int direction) {
     }
 }
 
+static float carousel_smoothstep(float progress) {
+    return progress * progress * (3.0f - 2.0f * progress);
+}
+
 static float system_carousel_ease(void) {
     if (!settings_anim || system_carousel_frame > SYSTEM_CAROUSEL_FRAMES)
         return 1.0f;
     float p = (float)system_carousel_frame / (float)SYSTEM_CAROUSEL_FRAMES;
-    return p * p * (3.0f - 2.0f * p);
+    return carousel_smoothstep(p);
 }
 
 static int system_carousel_delta(int index) {
@@ -5197,6 +5205,8 @@ static void render_system_carousel(uint16_t *fb) {
 #define SYSTEM_GRID_COLS 4
 #define SYSTEM_GRID_ROWS 2
 #define SYSTEM_GRID_PAGE (SYSTEM_GRID_COLS * SYSTEM_GRID_ROWS)
+#define ENHANCED_HOME_VISIBLE 5
+#define ENHANCED_HOME_TRAVEL 3
 #ifndef FROGUI_THEME_PACK_ROOT
 #define FROGUI_THEME_PACK_ROOT BANNER_DIR "/theme-packs"
 #endif
@@ -5225,6 +5235,12 @@ static bool enhanced_grid_prepared;
 static size_t enhanced_grid_count;
 static char enhanced_grid_names[SYSTEM_GRID_PAGE][sizeof entries[0].name];
 static SystemIcon *enhanced_grid_icons[SYSTEM_GRID_PAGE];
+static int enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES;
+static float enhanced_home_from_offset;
+static float enhanced_home_visible_offset;
+static int enhanced_home_previous = -1;
+static int enhanced_home_target = -1;
+static int enhanced_grid_first;
 
 static void system_icons_clear(void) {
     for (int i = 0; i < SYSTEM_ICON_CACHE_N; i++) {
@@ -5234,6 +5250,7 @@ static void system_icons_clear(void) {
     }
     system_icon_missing_count = 0;
     enhanced_grid_prepared = false;
+    enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES;
 }
 
 static bool enhanced_theme_sync(void) {
@@ -5468,20 +5485,72 @@ static SystemIcon *system_icon_get(const char *folder) {
     return system_icon_path(folder, path, sizeof path) ? system_icon_load(path, NULL) : NULL;
 }
 
-/* Populate only on a view, page, listing or pack change. Long-label
- * marquee redraws reuse these borrowed pointers without probing the SD. */
+static bool enhanced_home_view(void) {
+    return settings_graphical_home && icon_system_view() && !settings_menu_active &&
+           !viewing_activity && !viewing_info;
+}
+
+static bool enhanced_home_motion_enabled(void) {
+    const ThemePresentation *presentation = theme_resource_presentation(enhanced_theme);
+    return settings_anim && (!presentation || !presentation->reduced_motion);
+}
+
+static bool enhanced_home_is_animating(void) {
+    return enhanced_home_view() && enhanced_home_frame <= SYSTEM_CAROUSEL_FRAMES;
+}
+
+static void enhanced_home_move(int direction) {
+    NavHorizontalWindow window;
+    nav_window_init(&window, entry_count, ENHANCED_HOME_VISIBLE, selected_index);
+    if (!nav_window_move(&window, entry_count, ENHANCED_HOME_VISIBLE, direction)) return;
+
+    enhanced_home_from_offset = enhanced_grid_prepared
+                               ? enhanced_home_visible_offset : (float)scroll_offset;
+    /* A burst can outrun the ribbon. Keep the visible span inside the
+     * shared icon cache even if many updates arrive without a paint. */
+    if (enhanced_home_from_offset < window.offset - ENHANCED_HOME_TRAVEL)
+        enhanced_home_from_offset = window.offset - ENHANCED_HOME_TRAVEL;
+    if (enhanced_home_from_offset > window.offset + ENHANCED_HOME_TRAVEL)
+        enhanced_home_from_offset = window.offset + ENHANCED_HOME_TRAVEL;
+    enhanced_home_previous = selected_index;
+    selected_index = window.selected;
+    scroll_offset = window.offset;
+    enhanced_home_target = selected_index;
+    enhanced_home_frame = enhanced_home_motion_enabled() ? 0 : SYSTEM_CAROUSEL_FRAMES;
+}
+
+/* Resolve the entire transition's visible span on state changes. Painting
+ * borrows pixels from the existing LRU and never calls an artwork loader. */
 static void prepare_enhanced_grid(void) {
-    if (!settings_graphical_home || !icon_system_view() ||
-        settings_menu_active || viewing_activity || viewing_info || entry_count <= 0 ||
-        selected_index < 0 || selected_index >= entry_count) {
+    if (!enhanced_home_view() || entry_count <= 0) {
         enhanced_grid_prepared = false;
+        enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES + 1;
+        enhanced_home_target = -1;
         return;
     }
-    int first = selected_index / SYSTEM_GRID_PAGE * SYSTEM_GRID_PAGE;
-    size_t count = (size_t)(entry_count - first);
-    if (count > SYSTEM_GRID_PAGE) count = SYSTEM_GRID_PAGE;
-    bool same = enhanced_grid_prepared && enhanced_grid_count == count &&
-                system_icon_pack == settings_icon_pack_idx;
+    NavHorizontalWindow window;
+    nav_window_init(&window, entry_count, ENHANCED_HOME_VISIBLE, selected_index);
+    selected_index = window.selected;
+    scroll_offset = window.offset;
+
+    if (!enhanced_grid_prepared || enhanced_home_target != selected_index ||
+        !enhanced_home_motion_enabled()) {
+        enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES + 1;
+        enhanced_home_target = selected_index;
+    }
+    if (enhanced_home_frame >= SYSTEM_CAROUSEL_FRAMES)
+        enhanced_home_visible_offset = enhanced_home_from_offset = (float)scroll_offset;
+
+    int first = (int)floorf(enhanced_home_from_offset);
+    if (first > scroll_offset) first = scroll_offset;
+    if (first < 0) first = 0;
+    int end = (int)ceilf(enhanced_home_from_offset);
+    if (end < scroll_offset) end = scroll_offset;
+    end += ENHANCED_HOME_VISIBLE;
+    if (end > entry_count) end = entry_count;
+    size_t count = (size_t)(end - first);
+    bool same = enhanced_grid_prepared && enhanced_grid_first == first &&
+                enhanced_grid_count == count && system_icon_pack == settings_icon_pack_idx;
     for (size_t i = 0; same && i < count; i++)
         same = strcmp(enhanced_grid_names[i], entries[first + i].name) == 0;
     if (same) return;
@@ -5490,8 +5559,92 @@ static void prepare_enhanced_grid(void) {
         strcpy(enhanced_grid_names[i], name);
         enhanced_grid_icons[i] = system_icon_get(name);
     }
+    enhanced_grid_first = first;
     enhanced_grid_count = count;
     enhanced_grid_prepared = true;
+}
+
+static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
+                             int x, int y, int w, int h);
+
+static const char *enhanced_home_label(int index) {
+    if (index >= 0 && index < entry_count) {
+        if (entries[index].is_dir) return system_display_name(entries[index].name);
+        if (strcmp(entries[index].name, FAVOURITES_ENTRY_NAME) == 0)
+            return tr_or("folder.favourites", "Favourites");
+    }
+    return "";
+}
+
+static void render_enhanced_home(uint16_t *fb) {
+    float progress = 1.0f;
+    if (enhanced_home_frame < SYSTEM_CAROUSEL_FRAMES)
+        progress = (float)enhanced_home_frame / SYSTEM_CAROUSEL_FRAMES;
+    if (enhanced_home_frame <= SYSTEM_CAROUSEL_FRAMES) enhanced_home_frame++;
+    float eased = carousel_smoothstep(progress);
+    enhanced_home_visible_offset = enhanced_home_from_offset +
+        ((float)scroll_offset - enhanced_home_from_offset) * eased;
+
+    const ThemePresentation *presentation = theme_resource_presentation(enhanced_theme);
+    const int margin = UI_S(24);
+    const int step = (SCREEN_WIDTH - 2 * margin) / ENHANCED_HOME_VISIBLE;
+    const int center_y = SCREEN_HEIGHT / 3;
+    const int spacing = UI_S(presentation ? presentation->icon_spacing : 8);
+    const int scale = presentation ? presentation->icon_scale_percent : 115;
+    const int base = (step - spacing) * 100 / (scale + 5);
+    render_theme_heading(fb, MAIN_TAB_GAMES, COLOR_BG, "EXPLORE CONTENT");
+    for (size_t slot = 0; enhanced_grid_prepared && slot < enhanced_grid_count; slot++) {
+        int index = enhanced_grid_first + (int)slot;
+        int center = margin + step / 2 + (int)((index - enhanced_home_visible_offset) * step);
+        if (center + step / 2 <= 0 || center - step / 2 >= SCREEN_WIDTH) continue;
+        bool active = index == selected_index;
+        float zoom = active ? eased : index == enhanced_home_previous ? 1.0f - eased : 0.0f;
+        int size = base + (int)(base * (scale - 100) * zoom / 100.0f);
+        int x = center - size / 2;
+        int y = center_y - size / 2;
+        if (active)
+            render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4),
+                                      size + UI_S(8), size + UI_S(8),
+                                      UI_S(9), COLOR_SELECT_BG, 192);
+
+        const char *label = enhanced_home_label(index);
+        SystemIcon *icon = enhanced_grid_icons[slot];
+        if (icon) {
+            system_icon_draw(fb, icon, x, y, size, size);
+        } else {
+            unsigned char initial = (unsigned char)label[0];
+            if (initial >= 'a' && initial <= 'z') initial -= 'a' - 'A';
+            char initials[2] = {initial && initial < 128 ? (char)initial : '?', 0};
+            font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
+                           center - font_measure_text(initials) / 2,
+                           center_y - font_get_size() / 2, initials,
+                           active ? COLOR_SELECT_TEXT : COLOR_TEXT);
+        }
+
+    }
+    if (entry_count > 0) {
+        const char *label = enhanced_home_label(selected_index);
+        int label_y = center_y + step / 2 + UI_S(10);
+        int label_width = SCREEN_WIDTH - 2 * margin - UI_S(16);
+        int background_width = font_measure_text(label) + UI_S(16);
+        if (background_width > SCREEN_WIDTH - 2 * margin) background_width = SCREEN_WIDTH - 2 * margin;
+        render_rounded_rect_alpha(fb, margin, label_y, background_width,
+                                  ITEM_HEIGHT, UI_S(6), COLOR_SELECT_BG, 192);
+        font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
+                               margin + UI_S(8), label_y, label, COLOR_SELECT_TEXT,
+                               margin + UI_S(8), label_y, label_width, ITEM_HEIGHT);
+    }
+    char shortcuts[96];
+    if (settings_apps_in_settings)
+        snprintf(shortcuts, sizeof shortcuts, "START  %s", tr("tab.settings"));
+    else
+        snprintf(shortcuts, sizeof shortcuts, "START  %s    R1  %s",
+                 tr("tab.settings"), tr("tab.apps"));
+    int hint_y = SCREEN_HEIGHT - ITEM_HEIGHT * 2;
+    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, PADDING, hint_y,
+                           shortcuts, COLOR_LEGEND, PADDING, hint_y,
+                           SCREEN_WIDTH - PADDING * 2, ITEM_HEIGHT);
+    render_legend(fb, LEGEND_X_NONE, entry_count > 0, 1);
 }
 
 static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
@@ -5501,19 +5654,24 @@ static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
     if (dh > h) { dh = h; dw = icon->width * h / icon->height; }
     if (dw < 1 || dh < 1) return;
     int ox = x + (w - dw) / 2, oy = y + (h - dh) / 2;
-    for (int dy = 0; dy < dh; dy++) {
+    int left = ox < 0 ? -ox : 0;
+    int right = ox + dw > SCREEN_WIDTH ? SCREEN_WIDTH - ox : dw;
+    int top = oy < 0 ? -oy : 0;
+    int bottom = oy + dh > SCREEN_HEIGHT ? SCREEN_HEIGHT - oy : dh;
+    if (left >= right || top >= bottom) return;
+    for (int dy = top; dy < bottom; dy++) {
         int sy = dy * icon->height / dh;
-        uint16_t *dst = fb + (size_t)(oy + dy) * SCREEN_WIDTH + ox;
-        for (int dx = 0; dx < dw; dx++) {
+        uint16_t *dst = fb + (size_t)(oy + dy) * SCREEN_WIDTH + (ox + left);
+        for (int dx = left; dx < right; dx++, dst++) {
             int sx = dx * icon->width / dw;
             size_t src = (size_t)sy * icon->width + sx;
             unsigned a = icon->alpha[src];
             if (!a) continue;
             uint16_t color = icon->pixels[src];
-            if (a == 255) { dst[dx] = color; continue; }
+            if (a == 255) { *dst = color; continue; }
             unsigned sr = (color >> 11) & 31, sg = (color >> 5) & 63, sb = color & 31;
-            unsigned dr = (dst[dx] >> 11) & 31, dg = (dst[dx] >> 5) & 63, db = dst[dx] & 31;
-            dst[dx] = (uint16_t)((((sr*a + dr*(255-a))/255) << 11) |
+            unsigned dr = (*dst >> 11) & 31, dg = (*dst >> 5) & 63, db = *dst & 31;
+            *dst = (uint16_t)((((sr*a + dr*(255-a))/255) << 11) |
                                  (((sg*a + dg*(255-a))/255) << 5) |
                                   ((sb*a + db*(255-a))/255));
         }
@@ -5546,8 +5704,7 @@ static void render_system_grid(uint16_t *fb) {
         int y = top + row * (cell_h + gap);
         int active = idx == selected_index;
 
-        SystemIcon *icon = settings_graphical_home
-                         ? enhanced_grid_icons[slot] : system_icon_get(entries[idx].name);
+        SystemIcon *icon = system_icon_get(entries[idx].name);
         uint16_t tile_bg = COLOR_SELECT_BG;
         uint16_t tile_text = COLOR_SELECT_TEXT;
         if (active && icon && icon->bright) {
@@ -5837,6 +5994,12 @@ static void handle_input(void) {
     /* Remap wizard: detect raw rising edge on any bit; B = skip this step */
     if (remap_wizard_active) {
         handle_remap_wizard();
+        return;
+    }
+
+    if (enhanced_home_view() && !settings_apps_in_settings &&
+        input_was_pressed(FROG_BTN_R1)) {
+        switch_main_tab(MAIN_TAB_APPS);
         return;
     }
 
@@ -6197,7 +6360,7 @@ static void handle_input(void) {
             ui_transition_start(-1);
             scan_apps_tab();
             return;
-        } else if (viewing_recents) {
+        } else if (viewing_recents || (settings_graphical_home && viewing_apps)) {
             switch_main_tab(MAIN_TAB_GAMES);
             return;
         } else if (apps_browsing && strcmp(current_path, apps_root_path) == 0) {
@@ -6252,6 +6415,11 @@ static void handle_input(void) {
             system_carousel_start(1);
         }
     } else if (icon_system_view()) {
+        if (settings_graphical_home) {
+            if (input_repeat(FROG_BTN_LEFT)) enhanced_home_move(-1);
+            if (input_repeat(FROG_BTN_RIGHT)) enhanced_home_move(1);
+            goto input_done;
+        }
         enum { GRID_COLS = 4 };
         scroll_offset = 0;
         if (input_repeat(FROG_BTN_LEFT) && entry_count > 0)
@@ -7448,9 +7616,9 @@ void retro_run(void) {
             for (const char *p = current_path; *p; p++) sig = sig*33u + (unsigned char)*p;
         }
         redraw = first || sig != last_sig || banner_is_animating() ||
-                 system_carousel_is_animating() ||
+                 system_carousel_is_animating() || enhanced_home_is_animating() ||
                  pill_animation_active(&menu_pill_animation) ||
-                 activity_marquee_active() || system_grid_marquee_active() ||
+                 activity_marquee_active() || (!settings_graphical_home && system_grid_marquee_active()) ||
                  view_transition_frame <= VIEW_TRANSITION_FRAMES ||
                  ui_toast_frames > 0 || usb_mode_confirm_active || usb_mode_initiated_active;
         last_sig = sig; first = 0;
@@ -7504,7 +7672,10 @@ void retro_run(void) {
         } else if (horizontal_system_view()) {
             render_system_carousel(framebuffer);
         } else if (icon_system_view()) {
-            render_system_grid(framebuffer);
+            if (settings_graphical_home)
+                render_enhanced_home(framebuffer);
+            else
+                render_system_grid(framebuffer);
         } else if (browser_grid_view()) {
             render_browser_grid(framebuffer);
         } else {

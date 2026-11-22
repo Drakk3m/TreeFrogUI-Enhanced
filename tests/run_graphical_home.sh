@@ -7,6 +7,7 @@ trap 'rm -rf "$scratch"' EXIT
 ulimit -c 0
 ${CC:-cc} -ffunction-sections -fdata-sections -Wl,--gc-sections \
     -Wl,--wrap=fopen -Wl,--wrap=system -Wl,--wrap=access -Wl,--wrap=malloc \
+    -Wl,--wrap=opendir -Wl,--wrap=mkdir -Wl,--wrap=unlink -Wl,--wrap=rename -Wl,--wrap=sync \
     $(pkg-config --cflags freetype2 harfbuzz) \
     -Iexternal/SheenBidi -Iexternal/SheenBidi/Headers -Iexternal/SheenBidi/Source \
     -DSB_CONFIG_UNITY tests/test_graphical_home.c navigation_model.c theme_resource.c render.c render_theme.c font.c \

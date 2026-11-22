@@ -467,7 +467,7 @@ static void shape_and_render_text(uint16_t *framebuffer, int screen_width,
             const SBRun *runs = SBLineGetRunsPtr(line);
 
             int line_width_fractional = 0;
-            int cursor_x_fractional = start_x << 6;
+            int cursor_x_fractional = start_x * 64;
 
             for (SBUInt32 r = 0; r < run_count; r++) {
               SBUInt32 run_offset = runs[r].offset;

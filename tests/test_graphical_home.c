@@ -4,7 +4,46 @@ static char test_theme_pack_root[512];
 #define FROGUI_THEME_PACK_ROOT test_theme_pack_root
 #include "../frogui_libretro.c"
 
-static char test_settings[512];
+static char test_settings[MAX_PATH_LEN];
+static char test_cache[MAX_PATH_LEN];
+static char test_launch[MAX_PATH_LEN];
+
+static const char *cache_fixture_path(const char *path, char *mapped, size_t size) {
+    size_t prefix = strlen(CACHE_DIR);
+    if (strncmp(path, CACHE_DIR, prefix) != 0 ||
+        (path[prefix] != 0 && path[prefix] != '/')) return path;
+    assert(test_cache[0]);
+    assert(snprintf(mapped, size, "%s%s", test_cache, path + prefix) < (int)size);
+    return mapped;
+}
+
+DIR *__real_opendir(const char *path);
+DIR *__wrap_opendir(const char *path) {
+    char mapped[MAX_PATH_LEN];
+    return __real_opendir(cache_fixture_path(path, mapped, sizeof mapped));
+}
+
+int __real_mkdir(const char *path, mode_t mode);
+int __wrap_mkdir(const char *path, mode_t mode) {
+    char mapped[MAX_PATH_LEN];
+    return __real_mkdir(cache_fixture_path(path, mapped, sizeof mapped), mode);
+}
+
+int __real_unlink(const char *path);
+int __wrap_unlink(const char *path) {
+    char mapped[MAX_PATH_LEN];
+    return __real_unlink(cache_fixture_path(path, mapped, sizeof mapped));
+}
+
+int __real_rename(const char *old_path, const char *new_path);
+int __wrap_rename(const char *old_path, const char *new_path) {
+    char old_mapped[MAX_PATH_LEN], new_mapped[MAX_PATH_LEN];
+    return __real_rename(cache_fixture_path(old_path, old_mapped, sizeof old_mapped),
+                         cache_fixture_path(new_path, new_mapped, sizeof new_mapped));
+}
+
+void __wrap_sync(void) { }
+
 static char test_legacy_icon[512];
 static const char legacy_icon[] = "/mnt/sdcard/frogui/system-icons/NoArtwork.png";
 static bool measure_allocations;
@@ -22,6 +61,9 @@ void *__wrap_malloc(size_t size) {
 
 FILE *__real_fopen(const char *path, const char *mode);
 FILE *__wrap_fopen(const char *path, const char *mode) {
+    char mapped[MAX_PATH_LEN];
+    path = cache_fixture_path(path, mapped, sizeof mapped);
+    if (strcmp(path, LAUNCH_FILE) == 0) return __real_fopen(test_launch, mode);
     if (strcmp(path, SETTINGS_FILE) == 0)
         return __real_fopen(test_settings, mode);
     if (test_legacy_icon[0] && strcmp(path, legacy_icon) == 0)
@@ -127,7 +169,8 @@ static void test_enhanced_art(const char *root) {
     write_fixture(path, "[theme]\nmanifest_version=1\n"
                        "[resource.home.background]\npath=wall.bmp\n"
                        "[resource.platform.afirst.icon]\npath=icon.png\n"
-                       "[resource.platform.noartwork.icon]\npath=bad.png\n");
+                       "[resource.platform.noartwork.icon]\npath=bad.png\n"
+                       "[resource.platform.noartwork.background]\npath=bad.png\n");
 
     theme_pack_count = 2;
     strcpy(theme_pack_files[1], "Pack");
@@ -179,10 +222,19 @@ static void test_enhanced_art(const char *root) {
         banner_render(framebuffer);
     }
     assert(allocations == 0 && banner_is_loaded() && !banner_is_animating());
-    load_banner_for_view("NoArtwork", false, false); /* same resolved backdrop */
+    load_banner_for_view("AFirst", false, false); /* same resolved backdrop */
     measure_allocations = false;
     assert(allocations == 0 && banner_is_loaded() && !banner_is_animating());
+    load_banner_for_view("NoArtwork", false, false); /* corrupt per-platform art */
+    assert(banner_is_loaded() && !banner_is_animating());
     assert(framebuffer[0] == 0xf800);
+    settings_backgrounds = 0;
+    load_banner_for_view("AFirst", false, false);
+    assert(!banner_is_loaded());
+    settings_backgrounds = 1;
+    settings_wallpaper_idx = 1;
+    assert(!load_enhanced_home_background("AFirst"));
+    settings_wallpaper_idx = 0;
     puts("PASS enhanced resource decode, native fallback, and zero mallocs on settled rendering");
 
     assert(snprintf(path, sizeof path, "%s/Legacy", packs_root) < (int)sizeof path);
@@ -210,11 +262,105 @@ static void test_enhanced_art(const char *root) {
     framebuffer = NULL;
 }
 
+static void test_ribbon(const char *root) {
+    char path[MAX_PATH_LEN];
+    for (int i = 0; i < 7; i++) {
+        assert(snprintf(path, sizeof path, "%s/Ribbon%d", root, i) < (int)sizeof path);
+        assert(mkdir(path, 0700) == 0);
+        assert(snprintf(path, sizeof path, "%s/Ribbon%d/Game.nes", root, i) < (int)sizeof path);
+        write_fixture(path, "");
+    }
+    settings_graphical_home = 1;
+    settings_anim = 1;
+    settings_apps_in_settings = 0;
+    scan_directory(ROMS_PATH);
+    assert(entry_count > ENHANCED_HOME_VISIBLE);
+    framebuffer = calloc(640 * 480, sizeof *framebuffer);
+    assert(framebuffer);
+    prepare_enhanced_grid();
+    render_enhanced_home(framebuffer); /* Offline export absent. */
+    assert(selected_index == 0 && scroll_offset == 0);
+    press(FROG_BTN_LEFT);
+    assert(selected_index == 0);
+
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_grid();
+    assert(selected_index == 1 && scroll_offset == 1);
+    assert(enhanced_grid_first == 0 && enhanced_grid_count == ENHANCED_HOME_VISIBLE + 1);
+    for (int i = 0; i < 5; i++) render_enhanced_home(framebuffer);
+    float position = enhanced_home_visible_offset;
+    assert(position > 0.0f && position < 1.0f);
+    press(FROG_BTN_LEFT);
+    prepare_enhanced_grid();
+    render_enhanced_home(framebuffer);
+    assert(enhanced_home_visible_offset == position);
+    for (int i = 0; i < SYSTEM_CAROUSEL_FRAMES; i++) render_enhanced_home(framebuffer);
+    assert(enhanced_home_visible_offset == 0.0f && !enhanced_home_is_animating());
+
+    for (int i = 0; i < entry_count + 3; i++) {
+        press(FROG_BTN_RIGHT);
+        prepare_enhanced_grid();
+        render_enhanced_home(framebuffer);
+        assert(enhanced_grid_count <= SYSTEM_GRID_PAGE);
+    }
+    assert(selected_index == entry_count - 1);
+    assert(scroll_offset == entry_count - ENHANCED_HOME_VISIBLE);
+    char selected[sizeof entries[0].name];
+    strcpy(selected, entries[selected_index].name);
+    press(FROG_BTN_R1);
+    assert(viewing_apps);
+    press(FROG_BTN_B);
+    prepare_enhanced_grid();
+    assert(enhanced_home_view() && strcmp(entries[selected_index].name, selected) == 0);
+
+    settings_file_cache = 1;
+    scan_directory(ROMS_PATH);
+    int stored_count = entry_count;
+    press(FROG_BTN_START);
+    assert(settings_menu_active);
+    assert(snprintf(path, sizeof path, "%s/RibbonEmpty", root) < (int)sizeof path);
+    assert(mkdir(path, 0700) == 0);
+    settings_hide_empty = 0;
+    for (int i = 0; i < SETTINGS_ROW_N; i++) {
+        if (!strcmp(settings_rows[i].label, "settings.system"))
+            settings_section_open[settings_section_of(i)] = true;
+        if (settings_rows[i].type == RT_CACHE_REBUILD) settings_menu_idx = i;
+    }
+    press(FROG_BTN_A);
+    assert(!settings_menu_active && entry_count == stored_count + 1);
+    prepare_enhanced_grid();
+    assert(scroll_offset == selected_index || scroll_offset == entry_count - ENHANCED_HOME_VISIBLE);
+
+    ThemeResourceManager *theme = theme_resource_create(root, THEME_RESOURCE_CACHE_MAX);
+    assert(theme);
+    assert(snprintf(path, sizeof path, "%s/reduced.ini", root) < (int)sizeof path);
+    write_fixture(path, "[theme]\nmanifest_version=1\n[presentation]\nreduced_motion=on\n");
+    assert(theme_resource_load_manifest(theme, "reduced.ini"));
+    enhanced_theme = theme;
+    press(FROG_BTN_LEFT);
+    prepare_enhanced_grid();
+    render_enhanced_home(framebuffer);
+    assert(!enhanced_home_is_animating() && enhanced_home_visible_offset == scroll_offset);
+    theme_resource_destroy(enhanced_theme);
+    enhanced_theme = NULL;
+    entry_count = 0;
+    selected_index = scroll_offset = 0;
+    prepare_enhanced_grid();
+    press(FROG_BTN_RIGHT);
+    render_enhanced_home(framebuffer);
+    assert(!enhanced_grid_prepared && selected_index == 0);
+    free(framebuffer);
+    framebuffer = NULL;
+    puts("PASS empty Home, ribbon scrolling, interrupted motion, Apps, cache rebuild, and reduced motion");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(snprintf(test_settings, sizeof test_settings, "%s/settings.txt", argv[1])
            < (int)sizeof test_settings);
     assert(strlen(argv[1]) < sizeof g_roms_path - 32);
+    assert(snprintf(test_cache, sizeof test_cache, "%s/.cache", argv[1]) < (int)sizeof test_cache);
+    assert(snprintf(test_launch, sizeof test_launch, "%s/.launch", argv[1]) < (int)sizeof test_launch);
     strcpy(g_roms_path, argv[1]);
     strcpy(current_path, ROMS_PATH);
     write_fixture(test_settings, "load_recents=on\nexplore_layout=horizontal\nenhanced_theme=legacy\n");
@@ -281,6 +427,16 @@ int main(int argc, char **argv) {
     restore_settings_listing();
     assert(strcmp(current_path, collection) == 0);
     assert(strcmp(entries[selected_index].name, "Example.nes") == 0);
+    press(FROG_BTN_A);
+    FILE *handoff = fopen(test_launch, "r");
+    assert(handoff);
+    char core_line[MAX_PATH_LEN], rom_line[MAX_PATH_LEN];
+    assert(fgets(core_line, sizeof core_line, handoff));
+    assert(fgets(rom_line, sizeof rom_line, handoff));
+    assert(fclose(handoff) == 0);
+    assert(strcmp(core_line, CORES_PATH "/quicknes_libretro.so\n") == 0);
+    rom_line[strcspn(rom_line, "\n")] = 0;
+    assert(strcmp(rom_line, rom) == 0);
     press(FROG_BTN_B);
     assert(strcmp(current_path, ROMS_PATH) == 0 && icon_system_view());
     assert(strcmp(entries[selected_index].name, "NoArtwork") == 0);
@@ -301,5 +457,6 @@ int main(int argc, char **argv) {
     scan_directory(ROMS_PATH);
     assert(entry_count == 3);
     test_enhanced_art(argv[1]);
+    test_ribbon(argv[1]);
     return 0;
 }
