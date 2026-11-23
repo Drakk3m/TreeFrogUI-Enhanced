@@ -6446,6 +6446,22 @@ static void render_enhanced_library(uint16_t *fb) {
     render_legend(fb, LEGEND_X_NONE, 1, 1);
 }
 
+static int details_playable_neighbor(int index, int direction) {
+    for (int i = index + direction; i >= 0 && i < entry_count; i += direction)
+        if (!entries[i].is_dir)
+            return i;
+    return -1;
+}
+
+static void render_details_chevron(uint16_t *fb, int x, int direction) {
+    int half_height = UI_S(6);
+    for (int dy = -half_height; dy <= half_height; dy++) {
+        int dx = direction * (half_height - abs(dy));
+        render_fill_rect(fb, x + dx, SCREEN_HEIGHT / 2 + dy,
+                         UI_S(2), 1, COLOR_TEXT);
+    }
+}
+
 static void render_enhanced_game_details(uint16_t *fb) {
     if (selected_index < 0 || selected_index >= entry_count) return;
     render_header(fb, "");
@@ -6497,6 +6513,10 @@ static void render_enhanced_game_details(uint16_t *fb) {
         render_fill_rect(fb, center - line, y + height * 3 / 4,
                          line * 2, UI_S(2), COLOR_TEXT);
     }
+    if (details_playable_neighbor(selected_index, -1) >= 0)
+        render_details_chevron(fb, UI_S(14), -1);
+    if (details_playable_neighbor(selected_index, 1) >= 0)
+        render_details_chevron(fb, SCREEN_WIDTH - UI_S(14), 1);
     const char *hint = tr_or("enhanced.details.play_back", "A  Play    B  Back");
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
                    (SCREEN_WIDTH - font_measure_text(hint)) / 2,
@@ -6623,6 +6643,18 @@ static void handle_input(void) {
             open_enhanced_settings();
         } else if (input_was_pressed(FROG_BTN_B)) {
             nav_model_handle(nav, NULL, NAV_INPUT_BACK, &effect);
+        } else if (input_was_pressed(FROG_BTN_LEFT) ||
+                   input_was_pressed(FROG_BTN_RIGHT)) {
+            int direction = input_was_pressed(FROG_BTN_LEFT) ? -1 : 1;
+            int next = details_playable_neighbor(selected_index, direction);
+            if (next >= 0) {
+                select_visible_entry(next);
+                snprintf(nav->state.game_id, sizeof nav->state.game_id,
+                         "%s", entries[selected_index].name);
+                /* Paging inside Details keeps the settled cover in the
+                 * left pane; CoverFlow movement is not replayed here. */
+                details_cover_transition_frame = SYSTEM_CAROUSEL_FRAMES;
+            }
         } else if (input_was_pressed(FROG_BTN_A) &&
                    selected_index >= 0 && selected_index < entry_count &&
                    !entries[selected_index].is_dir &&
