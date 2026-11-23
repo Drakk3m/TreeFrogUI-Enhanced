@@ -169,6 +169,8 @@ int load_thumbnail(const char *png_path, Thumbnail *thumb);
  * TreeFrogUI, MinUI, muOS, and common scraper exports. */
 int load_game_artwork(const char *game_path, ArtworkKind kind,
                       Thumbnail *thumb);
+/* Same artwork conventions, using bounded file and decode budgets for CoverFlow. */
+int load_game_artwork_bounded(const char *game_path, ArtworkKind kind, Thumbnail *thumb);
 
 // Load raw RGB565 file (fallback) - converts to ARGB8888
 int load_raw_rgb565(const char *path, Thumbnail *thumb);

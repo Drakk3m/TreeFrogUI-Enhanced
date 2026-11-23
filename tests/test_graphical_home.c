@@ -155,6 +155,63 @@ static void write_full_screen_bmp(const char *path) {
     assert(fclose(file) == 0);
 }
 
+static void write_cover_bmp(const char *path, unsigned width, unsigned height) {
+    size_t row_size = (width * 3 + 3) & ~3u;
+    size_t data_size = row_size * height;
+    unsigned char header[54] = {0};
+    header[0] = 'B'; header[1] = 'M'; header[10] = 54; header[14] = 40;
+    header[26] = 1; header[28] = 24;
+    unsigned values[] = {(unsigned)(54 + data_size), width, height};
+    int offsets[] = {2, 18, 22};
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++)
+        for (int shift = 0; shift < 32; shift += 8)
+            header[offsets[i] + shift / 8] = (unsigned char)(values[i] >> shift);
+    FILE *file = fopen(path, "wb");
+    assert(file && fwrite(header, 1, sizeof header, file) == sizeof header);
+    unsigned char row[2000];
+    assert(row_size <= sizeof row);
+    memset(row, 0x90, row_size);
+    for (unsigned y = 0; y < height; y++) assert(fwrite(row, 1, row_size, file) == row_size);
+    assert(fclose(file) == 0);
+}
+
+static void test_bounded_artwork(const char *root) {
+    char folder[MAX_PATH_LEN], path[MAX_PATH_LEN], rom[MAX_PATH_LEN];
+    assert(snprintf(folder, sizeof folder, "%s/AFirst/.res", root) < (int)sizeof folder);
+    assert(mkdir(folder, 0700) == 0);
+    Thumbnail image = {0};
+    assert(snprintf(rom, sizeof rom, "%s/AFirst/First.nes", root) < (int)sizeof rom);
+    assert(!load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(snprintf(path, sizeof path, "%s/First.png", folder) < (int)sizeof path);
+    assert(mkfifo(path, 0600) == 0);
+    assert(!load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(unlink(path) == 0);
+    write_bytes(path, "GIF89a", 6);
+    assert(!load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    write_bytes(path, corrupt_png, sizeof corrupt_png);
+    assert(!load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(unlink(path) == 0);
+    assert(snprintf(path, sizeof path, "%s/First.bmp", folder) < (int)sizeof path);
+    write_cover_bmp(path, 600, 20);
+    assert(load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(image.data && image.width == 250 && image.height == 8);
+    write_cover_bmp(path, 20, 440);
+    assert(load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(image.data && image.width == 11 && image.height == 250);
+    write_cover_bmp(path, 650, 10);
+    assert(!load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(load_game_artwork(rom, ARTWORK_BOXART, &image));
+    assert(image.data && image.width == 250);
+    assert(unlink(path) == 0);
+    assert(snprintf(path, sizeof path, "%s/First.rgb565", folder) < (int)sizeof path);
+    static const uint16_t raw[64 * 64] = {0xf81f};
+    write_bytes(path, raw, sizeof raw);
+    assert(load_game_artwork_bounded(rom, ARTWORK_BOXART, &image));
+    assert(image.data && !image.alpha && image.width == 64 && image.data[0] == 0xf81f);
+    free_thumbnail(&image);
+    puts("PASS native artwork lookup with bounded corrupt, unsupported, FIFO, oversized, extreme and raw fixtures");
+}
+
 static void test_enhanced_art(const char *root) {
     char theme_root[512], path[512];
     char packs_root[512];
@@ -547,6 +604,116 @@ static void test_ribbon(const char *root) {
     puts("PASS unified ribbon, Settings context, utility routes, cache rebuild, and reduced motion");
 }
 
+static void test_coverflow(const char *root) {
+    enum { COUNT = 1500 };
+    const size_t bytes = (size_t)640 * 480 * sizeof(uint16_t);
+    framebuffer = calloc(1, bytes);
+    assert(framebuffer);
+    settings_graphical_home = 1;
+    settings_anim = 1;
+    settings_hide_extensions = 1;
+    assert(snprintf(current_path, sizeof current_path, "%s/AFirst", root) < (int)sizeof current_path);
+    DirEntry *games = realloc(entries, COUNT * sizeof(*games));
+    assert(games);
+    entries = games;
+    entry_capacity = COUNT;
+    entry_count = COUNT;
+    memset(entries, 0, COUNT * sizeof(*entries));
+    for (int i = 0; i < COUNT; i++) snprintf(entries[i].name, sizeof entries[i].name, "ROM%04d.nes", i);
+    for (int i = 0; i < 12; i++) {
+        char path[MAX_PATH_LEN];
+        assert(snprintf(path, sizeof path, "%s/.res/ROM%04d.bmp", current_path, i) < (int)sizeof path);
+        write_cover_bmp(path, 250, 250);
+    }
+    selected_index = 0;
+    prepare_enhanced_library(true);
+    render_enhanced_library(framebuffer);
+    press(FROG_BTN_LEFT);
+    assert(selected_index == 0);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    assert(selected_index == 1 && coverflow_animating());
+    for (int i = 0; i < 4; i++) render_enhanced_library(framebuffer);
+    float interrupted = coverflow_visible;
+    assert(interrupted > 0 && interrupted < 1);
+    press(FROG_BTN_LEFT);
+    prepare_enhanced_library(false);
+    assert(selected_index == 0 && coverflow_from == interrupted);
+    for (int i = 0; i < SYSTEM_CAROUSEL_FRAMES; i++) render_enhanced_library(framebuffer);
+    assert(!coverflow_animating() && coverflow_visible == 0);
+
+    size_t largest_retained = 0, native_draw_allocations = 0;
+    long long start = monotonic_ms();
+    for (int step = 0; step < 180; step++) {
+        press(step % 20 < 13 ? FROG_BTN_RIGHT : FROG_BTN_LEFT);
+        prepare_enhanced_library(false);
+        assert(coverflow_last - coverflow_first <= BOXART_FLOW_SLOTS);
+        size_t retained = 0;
+        for (int slot = 0; slot < BOXART_FLOW_SLOTS; slot++) {
+            const BoxartCacheEntry *image = &boxart_cache[slot];
+            retained += (size_t)image->thumb.width * image->thumb.height * (2 + (image->alpha != NULL));
+        }
+        assert(retained <= BOXART_FLOW_SLOTS * BOXART_FLOW_EDGE * BOXART_FLOW_EDGE * 3u);
+        if (retained > largest_retained) largest_retained = retained;
+        unsigned cached_before_paint = boxart_age;
+        allocations = 0;
+        measure_allocations = true;
+        render_enhanced_library(framebuffer);
+        measure_allocations = false;
+        native_draw_allocations += allocations;
+        assert(boxart_age == cached_before_paint);
+    }
+    printf("CoverFlow fixture: %d ROMs, 180 input/paint steps in %lld ms, max retained pixels %zu bytes\n",
+           COUNT, monotonic_ms() - start, largest_retained);
+    printf("CoverFlow draw: %zu native malloc calls over 180 frames, zero artwork cache accesses\n",
+           native_draw_allocations);
+    assert(largest_retained > 0);
+
+    char changed_cover[MAX_PATH_LEN];
+    assert(snprintf(changed_cover, sizeof changed_cover, "%s/.res/ROM0000.bmp", current_path)
+           < (int)sizeof changed_cover);
+    selected_index = 0;
+    prepare_enhanced_library(false);
+    assert(coverflow_images[0]);
+    assert(unlink(changed_cover) == 0);
+    prepare_enhanced_library(false);
+    assert(coverflow_images[0]); /* Warm paint and unchanged selection never probe SD. */
+    ThemeResourceManager *theme = theme_resource_create(root, THEME_RESOURCE_CACHE_MAX);
+    assert(theme && theme_resource_load_manifest(theme, "reduced.ini"));
+    enhanced_theme = theme;
+    prepare_enhanced_library(true);
+    assert(!coverflow_images[0]); /* Same-platform pack switch dropped stale pixels. */
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    assert(selected_index == 1 && !coverflow_animating());
+    enhanced_theme = NULL;
+    theme_resource_destroy(theme);
+    prepare_enhanced_library(true);
+
+    settings_anim = 0;
+    selected_index = COUNT - 1;
+    prepare_enhanced_library(false);
+    press(FROG_BTN_RIGHT);
+    assert(selected_index == COUNT - 1 && !coverflow_animating());
+    render_enhanced_library(framebuffer);
+    assert(coverflow_visible == COUNT - 1);
+    for (int pass = 0; pass < 3; pass++) {
+        strcpy(current_path, ROMS_PATH);
+        prepare_enhanced_library(false);
+        for (int slot = 0; slot < BOXART_FLOW_SLOTS; slot++) assert(!boxart_cache[slot].path[0]);
+        assert(snprintf(current_path, sizeof current_path, "%s/NoArtwork", root) < (int)sizeof current_path);
+        entry_count = pass;
+        selected_index = 0;
+        prepare_enhanced_library(true);
+        render_enhanced_library(framebuffer);
+        assert(coverflow_last == pass);
+    }
+    boxart_clear();
+    free(framebuffer);
+    framebuffer = NULL;
+    puts("PASS bounded CoverFlow cache, interrupted navigation, edge cases and library lifecycle");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
@@ -622,6 +789,18 @@ int main(int argc, char **argv) {
     assert(strcmp(current_path, collection) == 0);
     assert(strcmp(entries[selected_index].name, "Example.nes") == 0);
     press(FROG_BTN_A);
+    assert(enhanced_details_view() && access(test_launch, F_OK) != 0);
+    press(FROG_BTN_START);
+    assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_GAME_DETAILS);
+    press(FROG_BTN_B);
+    assert(enhanced_details_view() && strcmp(entries[selected_index].name, "Example.nes") == 0);
+    press(FROG_BTN_B);
+    assert(enhanced_library_view() && !enhanced_details_view() && selected_index == 0);
+    assert(access(test_launch, F_OK) != 0);
+    press(FROG_BTN_A);
+    assert(enhanced_details_view());
+    press(FROG_BTN_A);
+    assert(!enhanced_details_view());
     FILE *handoff = fopen(test_launch, "r");
     assert(handoff);
     char core_line[MAX_PATH_LEN], rom_line[MAX_PATH_LEN];
@@ -652,8 +831,10 @@ int main(int argc, char **argv) {
     assert(horizontal_system_view());
     scan_directory(ROMS_PATH);
     assert(entry_count == 3);
+    test_bounded_artwork(argv[1]);
     test_enhanced_art(argv[1]);
     test_ui_sounds(argv[1]);
     test_ribbon(argv[1]);
+    test_coverflow(argv[1]);
     return 0;
 }

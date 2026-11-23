@@ -1,9 +1,12 @@
 #include "render.h"
+#include "banner.h"
+#include "theme_resource.h"
 #include "frogui_settings.h"
 #include "common/i18n.h"
 #include "font.h"
 #include "stb_image.h" /* decls only; impl lives in banner.c */
 #include <dirent.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -679,8 +682,10 @@ static void artwork_miss_add(uint64_t game_hash, uint64_t folder_sig,
   }
 }
 
-int load_game_artwork(const char *game_path, ArtworkKind kind,
-                      Thumbnail *thumb) {
+static int load_thumbnail_mode(const char *base_path, Thumbnail *thumb, bool bounded);
+
+static int load_game_artwork_mode(const char *game_path, ArtworkKind kind,
+                                  Thumbnail *thumb, bool bounded) {
   static const char *folders[] = {".res", "Imgs", "images", "Images", NULL};
   static const char *box_suffixes[] = {"", NULL};
   static const char *title_suffixes[] = {"-title",       "_title",
@@ -701,12 +706,12 @@ int load_game_artwork(const char *game_path, ArtworkKind kind,
   if (kind == ARTWORK_BOXART && slash && dot && strcasecmp(dot, ".sh") == 0) {
     int n = snprintf(base, sizeof base, "%.*s.png", (int)(dot - game_path),
                      game_path);
-    if (n > 0 && (size_t)n < sizeof base && load_thumbnail(base, thumb))
+    if (n > 0 && (size_t)n < sizeof base && load_thumbnail_mode(base, thumb, bounded))
       return 1;
   }
-  uint64_t game_hash = artwork_hash(game_path);
-  uint64_t folder_sig = artwork_folder_signature(game_path);
-  if (artwork_miss_contains(game_hash, folder_sig, kind)) {
+  uint64_t game_hash = bounded ? 0 : artwork_hash(game_path);
+  uint64_t folder_sig = bounded ? 0 : artwork_folder_signature(game_path);
+  if (!bounded && artwork_miss_contains(game_hash, folder_sig, kind)) {
     free_thumbnail(thumb);
     return 0;
   }
@@ -715,12 +720,22 @@ int load_game_artwork(const char *game_path, ArtworkKind kind,
       if (!artwork_base_path(game_path, folders[f], suffixes[s], base,
                              sizeof base))
         continue;
-      if (load_thumbnail(base, thumb))
+      if (load_thumbnail_mode(base, thumb, bounded))
         return 1;
     }
   }
-  artwork_miss_add(game_hash, folder_sig, kind);
+  /* A CoverFlow size rejection must not poison the classic disk miss table. */
+  if (!bounded)
+    artwork_miss_add(game_hash, folder_sig, kind);
   return 0;
+}
+
+int load_game_artwork(const char *game_path, ArtworkKind kind, Thumbnail *thumb) {
+  return load_game_artwork_mode(game_path, kind, thumb, false);
+}
+
+int load_game_artwork_bounded(const char *game_path, ArtworkKind kind, Thumbnail *thumb) {
+  return load_game_artwork_mode(game_path, kind, thumb, true);
 }
 
 static uint16_t rgb24_to_rgb565(uint8_t r, uint8_t g, uint8_t b) {
@@ -734,13 +749,57 @@ static uint8_t
 #define THUMB_BUF_W 250
 #define THUMB_BUF_H 250
 
+/* O_NONBLOCK and fstat keep malformed artwork paths, such as FIFOs, from
+ * blocking or being mistaken for files. Use the exact opened file throughout. */
+static FILE *open_bounded_artwork(const char *path, size_t limit, size_t *length) {
+  int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+  if (fd < 0)
+    return NULL;
+  struct stat info;
+  if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size <= 0 ||
+      (uintmax_t)info.st_size > limit) {
+    close(fd);
+    return NULL;
+  }
+  FILE *file = fdopen(fd, "rb");
+  if (!file) {
+    close(fd);
+    return NULL;
+  }
+  *length = (size_t)info.st_size;
+  return file;
+}
+
+static unsigned char *load_bounded_image(const char *path, int *w, int *h) {
+  size_t size;
+  FILE *file = open_bounded_artwork(path, THEME_RESOURCE_FILE_MAX, &size);
+  if (!file)
+    return NULL;
+  unsigned char *encoded = malloc(size);
+  unsigned char *pixels = NULL;
+  if (encoded && fread(encoded, 1, size, file) == size &&
+      fgetc(file) == EOF && !ferror(file)) {
+    bool png = size >= 8 && !memcmp(encoded, "\x89PNG\r\n\x1a\n", 8);
+    bool jpeg = size >= 2 && encoded[0] == 0xff && encoded[1] == 0xd8;
+    bool bmp = size >= 2 && encoded[0] == 'B' && encoded[1] == 'M';
+    int channels;
+    if ((png || jpeg || bmp) &&
+        stbi_info_from_memory(encoded, (int)size, w, h, &channels))
+      pixels = banner_decode_enhanced_image(encoded, (int)size, *w, *h, 4);
+  }
+  fclose(file);
+  free(encoded);
+  return pixels;
+}
+
 // Decode a JPG/PNG/BMP via stb_image and nearest-neighbor downscale into the
 // static RGB565 buffer (aspect-preserving, capped at 250x250). Alpha is kept
 // in a side buffer and composited per-pixel at render time, so transparent
 // boxart shows whatever is actually behind it (theme/background image).
-static int load_image_thumbnail(const char *path, Thumbnail *thumb) {
+static int load_image_thumbnail(const char *path, Thumbnail *thumb, bool bounded) {
   int w, h, ch;
-  unsigned char *img = stbi_load(path, &w, &h, &ch, 4); // force RGBA
+  unsigned char *img = bounded ? load_bounded_image(path, &w, &h)
+                               : stbi_load(path, &w, &h, &ch, 4);
   if (!img)
     return 0;
   if (w <= 0 || h <= 0) {
@@ -780,7 +839,9 @@ static int load_image_thumbnail(const char *path, Thumbnail *thumb) {
   return 1;
 }
 
-int load_thumbnail(const char *base_path, Thumbnail *thumb) {
+static int load_raw_rgb565_mode(const char *path, Thumbnail *thumb, bool bounded);
+
+static int load_thumbnail_mode(const char *base_path, Thumbnail *thumb, bool bounded) {
   if (!base_path || !thumb)
     return 0;
   thumb->data = NULL;
@@ -793,27 +854,38 @@ int load_thumbnail(const char *base_path, Thumbnail *thumb) {
   static const char *exts[] = {".png", ".jpg", ".jpeg", ".bmp", NULL};
   for (int i = 0; exts[i]; i++) {
     snprintf(p, sizeof p, "%s%s", base_path, exts[i]);
-    if (access(p, F_OK) == 0 && load_image_thumbnail(p, thumb))
+    if ((bounded || access(p, F_OK) == 0) && load_image_thumbnail(p, thumb, bounded))
       return 1;
   }
   snprintf(p, sizeof p, "%s.rgb565", base_path);
-  return load_raw_rgb565(p, thumb);
+  return load_raw_rgb565_mode(p, thumb, bounded);
 }
 
-int load_raw_rgb565(const char *path, Thumbnail *thumb) {
-  // Check if file exists
-  if (access(path, F_OK) != 0) {
-    return 0;
-  }
+int load_thumbnail(const char *base_path, Thumbnail *thumb) {
+  return load_thumbnail_mode(base_path, thumb, false);
+}
 
-  FILE *fp = fopen(path, "rb");
-  if (!fp) {
+static int load_raw_rgb565_mode(const char *path, Thumbnail *thumb, bool bounded) {
+  if (!bounded && access(path, F_OK) != 0)
     return 0;
-  }
+  size_t length = 0;
+  FILE *fp = bounded ? open_bounded_artwork(path, sizeof thumbnail_buffer, &length)
+                     : fopen(path, "rb");
+  if (!fp)
+    return 0;
 
-  fseek(fp, 0, SEEK_END);
-  long file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
+  long file_size = (long)length;
+  if (!bounded) {
+    if (fseek(fp, 0, SEEK_END) != 0) {
+      fclose(fp);
+      return 0;
+    }
+    file_size = ftell(fp);
+    if (fseek(fp, 0, SEEK_SET) != 0) {
+      fclose(fp);
+      return 0;
+    }
+  }
 
   // Try common dimensions - including 160x160 for the resized images
   int dimensions[][2] = {{64, 64},   {128, 128}, {160, 160},
@@ -836,19 +908,22 @@ int load_raw_rgb565(const char *path, Thumbnail *thumb) {
       thumb->data = thumbnail_buffer; // Use static buffer
       thumb->alpha = NULL;            // raw rgb565 has no alpha: opaque
 
-      size_t read_bytes = fread(thumb->data, 1, file_size, fp);
+      bool valid = fread(thumb->data, 1, (size_t)file_size, fp) == (size_t)file_size;
+      if (bounded)
+        valid = valid && fgetc(fp) == EOF && !ferror(fp);
       fclose(fp);
-
-      if (read_bytes == file_size) {
-        return 1;
-      } else {
-        return 0;
-      }
+      if (!valid && bounded)
+        free_thumbnail(thumb);
+      return valid;
     }
   }
 
   fclose(fp);
   return 0;
+}
+
+int load_raw_rgb565(const char *path, Thumbnail *thumb) {
+  return load_raw_rgb565_mode(path, thumb, false);
 }
 
 void free_thumbnail(Thumbnail *thumb) {

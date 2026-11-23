@@ -3085,77 +3085,105 @@ static void render_game_switcher(uint16_t *framebuffer) {
     }
 }
 
-/* Box-art side panel (Onion/muOS-style): right portion of the list view shows
- * the selected game's box art + name. Opaque card is drawn first so any
- * overflowing list-row text on the left is painted over. */
+/* The existing side-panel LRU also owns CoverFlow's bounded thumbnails.
+ * A mode switch discards its previous entries, including negative results. */
+enum { BOXART_CLASSIC_SLOTS = 4, BOXART_FLOW_SLOTS = 7, BOXART_FLOW_EDGE = 192 };
+typedef struct {
+    char path[1024];
+    Thumbnail thumb;
+    uint8_t *alpha;
+    unsigned age;
+} BoxartCacheEntry;
+
+static BoxartCacheEntry boxart_cache[BOXART_FLOW_SLOTS];
+static unsigned boxart_age;
+static bool boxart_bounded;
+
+static void boxart_release(BoxartCacheEntry *entry) {
+    free(entry->thumb.data);
+    free(entry->alpha);
+    memset(entry, 0, sizeof *entry);
+}
+
+static void boxart_clear(void) {
+    for (int i = 0; i < BOXART_FLOW_SLOTS; i++) boxart_release(&boxart_cache[i]);
+    boxart_age = 0;
+}
+
+static const Thumbnail *boxart_get(const char *path, bool bounded) {
+    if (bounded != boxart_bounded) {
+        boxart_clear();
+        boxart_bounded = bounded;
+    }
+    int slots = bounded ? BOXART_FLOW_SLOTS : BOXART_CLASSIC_SLOTS;
+    BoxartCacheEntry *victim = &boxart_cache[0];
+    for (int i = 0; i < slots; i++) {
+        BoxartCacheEntry *entry = &boxart_cache[i];
+        if (entry->path[0] && strcmp(entry->path, path) == 0) {
+            entry->age = ++boxart_age;
+            return entry->thumb.data ? &entry->thumb : NULL;
+        }
+        if (!entry->path[0] || entry->age < victim->age) victim = entry;
+    }
+
+    boxart_release(victim);
+    snprintf(victim->path, sizeof victim->path, "%s", path);
+    victim->age = ++boxart_age;
+    Thumbnail decoded = {0};
+    int (*load)(const char *, ArtworkKind, Thumbnail *) =
+        bounded ? load_game_artwork_bounded : load_game_artwork;
+    if (!load(path, ARTWORK_BOXART, &decoded) &&
+        (bounded || !load(path, ARTWORK_TITLE_SCREEN, &decoded))) return NULL;
+    if (!decoded.data || decoded.width <= 0 || decoded.height <= 0) return NULL;
+
+    int w = decoded.width, h = decoded.height;
+    int edge = w > h ? w : h;
+    if (bounded && edge > BOXART_FLOW_EDGE) {
+        w = w * BOXART_FLOW_EDGE / edge;
+        h = h * BOXART_FLOW_EDGE / edge;
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
+    }
+    size_t pixels = (size_t)w * h;
+    victim->thumb.data = malloc(pixels * sizeof(uint16_t));
+    if (decoded.alpha) victim->alpha = malloc(pixels);
+    if (!victim->thumb.data || (decoded.alpha && !victim->alpha)) {
+        free(victim->thumb.data);
+        free(victim->alpha);
+        victim->thumb.data = NULL;
+        victim->alpha = NULL;
+        return NULL;
+    }
+    if (w == decoded.width && h == decoded.height) {
+        memcpy(victim->thumb.data, decoded.data, pixels * sizeof(uint16_t));
+        if (victim->alpha) memcpy(victim->alpha, decoded.alpha, pixels);
+    } else {
+        for (int y = 0; y < h; y++) {
+            int source = y * decoded.height / h * decoded.width;
+            for (int x = 0; x < w; x++) {
+                int at = source + x * decoded.width / w;
+                victim->thumb.data[y * w + x] = decoded.data[at];
+                if (victim->alpha) victim->alpha[y * w + x] = decoded.alpha[at];
+            }
+        }
+    }
+    victim->thumb.width = w;
+    victim->thumb.height = h;
+    victim->thumb.alpha = victim->alpha;
+    return &victim->thumb;
+}
+
+/* Box-art side panel (Onion/muOS-style), retaining classic sizing. */
 static void render_boxart_panel(uint16_t *fb, const char *full_path, const char *name) {
     int px   = SCREEN_WIDTH * 58 / 100;
     int top  = UI_S(44);
     int bot  = SCREEN_HEIGHT - UI_S(40);
     int pw   = SCREEN_WIDTH - px - UI_S(10);
     int ph   = bot - top;
-    if (pw < UI_S(60) || ph < UI_S(60)) return;          /* too narrow to bother */
-
-    /* Keep a few decoded thumbnails instead of only the last one. The old
-     * single-entry cache made every selection change synchronously probe and
-     * decode the SD card again; large .res libraries therefore felt stuck
-     * while scrolling. Negative entries are cached too, avoiding repeated
-     * filesystem probes for games without artwork. */
-    enum { BOXART_CACHE_N = 4 };
-    typedef struct {
-        char path[1024];
-        Thumbnail thumb;
-        uint8_t *alpha;
-        unsigned age;
-        int valid;
-    } BoxartCacheEntry;
-    static BoxartCacheEntry cache[BOXART_CACHE_N];
-    static unsigned age;
-    BoxartCacheEntry *entry = NULL;
-    for (int i = 0; i < BOXART_CACHE_N; i++) {
-        if (cache[i].valid && strcmp(cache[i].path, full_path) == 0) {
-            entry = &cache[i];
-            break;
-        }
-    }
-    if (!entry) {
-        entry = &cache[0];
-        for (int i = 1; i < BOXART_CACHE_N; i++) {
-            if (!cache[i].valid || cache[i].age < entry->age)
-                entry = &cache[i];
-        }
-        free(entry->thumb.data);
-        free(entry->alpha);
-        memset(entry, 0, sizeof *entry);
-        strncpy(entry->path, full_path, sizeof entry->path - 1);
-        entry->path[sizeof entry->path - 1] = '\0';
-        Thumbnail decoded = {0};
-        int found = load_game_artwork(full_path, ARTWORK_BOXART, &decoded);
-        /* Scrapers often provide a title screen rather than box art. */
-        if (!found)
-            found = load_game_artwork(full_path, ARTWORK_TITLE_SCREEN, &decoded);
-        if (found && decoded.data && decoded.width > 0 && decoded.height > 0) {
-            size_t pixels = (size_t)decoded.width * (size_t)decoded.height;
-            entry->thumb.data = malloc(pixels * sizeof(uint16_t));
-            if (decoded.alpha) entry->alpha = malloc(pixels);
-            if (entry->thumb.data && (!decoded.alpha || entry->alpha)) {
-                memcpy(entry->thumb.data, decoded.data, pixels * sizeof(uint16_t));
-                if (decoded.alpha) memcpy(entry->alpha, decoded.alpha, pixels);
-                entry->thumb.width = decoded.width;
-                entry->thumb.height = decoded.height;
-                entry->thumb.alpha = entry->alpha;
-            } else {
-                free(entry->thumb.data);
-                free(entry->alpha);
-                entry->thumb.data = NULL;
-                entry->alpha = NULL;
-            }
-        }
-        entry->valid = 1;
-    }
-    entry->age = ++age;
-    if (!entry->thumb.data) return;   /* no art, or cached decode failure */
-    Thumbnail ctb = entry->thumb;
+    if (pw < UI_S(60) || ph < UI_S(60)) return;
+    const Thumbnail *image = boxart_get(full_path, false);
+    if (!image) return;
+    Thumbnail ctb = *image;
 
     int nameh = UI_S(22);
     int aw = pw, ah = ph - nameh;
@@ -3681,6 +3709,7 @@ static void switch_main_tab(int target) {
 
 static void open_enhanced_settings(void) {
     NavModel *navigation = &enhanced_settings_navigation;
+    bool from_details = navigation->state.screen == NAV_GAME_DETAILS;
     nav_model_init(navigation, 1);
     snprintf(enhanced_settings_directory, sizeof enhanced_settings_directory,
              "%s", current_path);
@@ -3702,7 +3731,7 @@ static void open_enhanced_settings(void) {
                 snprintf(navigation->state.platform_id, NAV_ID_MAX,
                          "%.*s", (int)length, platform);
                 snprintf(navigation->state.game_id, NAV_ID_MAX, "%s", name);
-                navigation->state.screen = NAV_GAME_LIBRARY;
+                navigation->state.screen = from_details ? NAV_GAME_DETAILS : NAV_GAME_LIBRARY;
             }
         }
     }
@@ -3770,16 +3799,23 @@ static void restore_settings_listing(void) {
     }
     save_games_tab_entries();
 
-    if (navigation->state.screen != NAV_GAME_LIBRARY || platform < 0 ||
-        !entries[platform].is_dir)
+    bool from_details = navigation->state.screen == NAV_GAME_DETAILS;
+    if ((!from_details && navigation->state.screen != NAV_GAME_LIBRARY) ||
+        platform < 0 || !entries[platform].is_dir) {
+        if (from_details) navigation->state.screen = NAV_PLATFORM_HOME;
         return;
+    }
     DIR *directory = opendir(enhanced_settings_directory);
     if (directory) {
         closedir(directory);
         snprintf(current_path, sizeof current_path, "%s", enhanced_settings_directory);
         scan_directory(current_path);
-        select_visible_entry(visible_entry_named(navigation->state.game_id));
+        int game = visible_entry_named(navigation->state.game_id);
+        select_visible_entry(game);
+        if (from_details && (game < 0 || entries[game].is_dir))
+            navigation->state.screen = NAV_GAME_LIBRARY;
     } else {
+        navigation->state.screen = NAV_GAME_LIBRARY;
         snprintf(current_path, sizeof current_path, "%s/%s",
                  ROMS_PATH, navigation->state.platform_id);
         scan_directory(current_path);
@@ -4718,6 +4754,25 @@ static bool browser_grid_view(void) {
            strcmp(current_path, ROMS_PATH) != 0 &&
            !settings_menu_active && !viewing_recents && !viewing_favourites &&
            !viewing_apps && !apps_browsing && !viewing_search && !viewing_activity;
+}
+
+static const char *enhanced_library_relative_path(void) {
+    size_t root = strlen(ROMS_PATH);
+    if (strncmp(current_path, ROMS_PATH, root) != 0 ||
+        current_path[root] != '/' || !current_path[root + 1]) return NULL;
+    return current_path + root + 1;
+}
+
+static bool enhanced_library_view(void) {
+    return settings_graphical_home && !settings_menu_active &&
+           !viewing_recents && !viewing_favourites && !viewing_apps &&
+           !apps_browsing && !viewing_search && !viewing_activity && !viewing_info &&
+           enhanced_library_relative_path() != NULL;
+}
+
+static bool enhanced_details_view(void) {
+    return enhanced_library_view() &&
+           enhanced_settings_navigation.state.screen == NAV_GAME_DETAILS;
 }
 
 static bool switch_home_view(void) {
@@ -6017,6 +6072,209 @@ static void render_system_grid(uint16_t *fb) {
     render_legend(fb, LEGEND_X_NONE, show_select, 1);
 }
 
+static char coverflow_directory[MAX_PATH_LEN];
+static const Thumbnail *coverflow_images[BOXART_FLOW_SLOTS];
+static int coverflow_first, coverflow_last;
+static int coverflow_target = -1;
+static int coverflow_frame = SYSTEM_CAROUSEL_FRAMES;
+static float coverflow_from, coverflow_visible;
+
+static char coverflow_title_text[sizeof entries[0].name + 3];
+static int coverflow_title_width;
+
+static void prepare_coverflow_title(const DirEntry *entry) {
+    char name[sizeof entry->name];
+    snprintf(name, sizeof name, "%s", entry->name);
+    char *dot = strrchr(name, '.');
+    if (settings_hide_extensions && !entry->is_dir && dot && dot != name)
+        *dot = 0;
+
+    int available = SCREEN_WIDTH - UI_S(40);
+    snprintf(coverflow_title_text, sizeof coverflow_title_text, "%s", name);
+    coverflow_title_width = font_measure_text(name);
+    if (coverflow_title_width <= available) return;
+
+    /* Search byte offsets, measuring only prefixes ending at a UTF-8 boundary.
+     * Work is bounded and only done when selection or its presentation changes. */
+    size_t low = 0, high = strlen(name), keep = 0;
+    char candidate[sizeof coverflow_title_text];
+    while (low < high) {
+        size_t middle = low + (high - low) / 2;
+        size_t prefix = middle;
+        while (prefix && ((unsigned char)name[prefix] & 0xc0) == 0x80) prefix--;
+        snprintf(candidate, sizeof candidate, "%.*s...", (int)prefix, name);
+        if (font_measure_text(candidate) <= available) {
+            keep = prefix;
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    snprintf(coverflow_title_text, sizeof coverflow_title_text, "%.*s...", (int)keep, name);
+    coverflow_title_width = font_measure_text(coverflow_title_text);
+}
+
+static int coverflow_neighbors(void) {
+    const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
+    return theme ? (int)theme->coverflow_neighbors : 2;
+}
+
+static bool coverflow_animating(void) {
+    return enhanced_library_view() && !enhanced_details_view() &&
+           coverflow_frame < SYSTEM_CAROUSEL_FRAMES;
+}
+
+/* Resolve the visible span on selection or listing changes. Cached pointers
+ * remain valid while the span is painted. It never exceeds the LRU capacity. */
+static void prepare_enhanced_library(bool theme_changed) {
+    bool active = enhanced_library_view();
+    bool new_directory = active && strcmp(coverflow_directory, current_path) != 0;
+    if (theme_changed || new_directory || ((!active || entry_count <= 0) && coverflow_directory[0])) {
+        if (boxart_bounded) boxart_clear();
+        coverflow_directory[0] = 0;
+        coverflow_target = -1;
+        coverflow_frame = SYSTEM_CAROUSEL_FRAMES;
+        coverflow_first = coverflow_last = 0;
+    }
+    if (!active || entry_count <= 0) return;
+    snprintf(coverflow_directory, sizeof coverflow_directory, "%s", current_path);
+    if (selected_index < 0) selected_index = 0;
+    if (selected_index >= entry_count) selected_index = entry_count - 1;
+
+    bool motion = enhanced_home_motion_enabled() && !enhanced_details_view();
+    bool moving = coverflow_target >= 0 && coverflow_target != selected_index && motion;
+    if (coverflow_target != selected_index) {
+        prepare_coverflow_title(&entries[selected_index]);
+        float start = moving ? coverflow_visible : (float)selected_index;
+        if (start < selected_index - 1) start = selected_index - 1;
+        if (start > selected_index + 1) start = selected_index + 1;
+        coverflow_from = coverflow_visible = start;
+        coverflow_target = selected_index;
+        coverflow_frame = moving ? 0 : SYSTEM_CAROUSEL_FRAMES;
+    } else if (!motion && coverflow_frame < SYSTEM_CAROUSEL_FRAMES) {
+        coverflow_from = coverflow_visible = (float)selected_index;
+        coverflow_frame = SYSTEM_CAROUSEL_FRAMES;
+    }
+
+    int neighbors = coverflow_neighbors();
+    /* Keep the union until the next selection. Settling the animation should
+     * not schedule additional probes or shift cache ownership. */
+    int first = (int)floorf(coverflow_from) - neighbors;
+    int last = (int)ceilf(coverflow_from) + neighbors + 1;
+    if (first > selected_index - neighbors) first = selected_index - neighbors;
+    if (last < selected_index + neighbors + 1) last = selected_index + neighbors + 1;
+    if (first < 0) first = 0;
+    if (last > entry_count) last = entry_count;
+    if (first == coverflow_first && last == coverflow_last && !new_directory && !theme_changed)
+        return;
+    for (int i = first; i < last; i++) {
+        char path[1024];
+        int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[i].name);
+        coverflow_images[i - first] = !entries[i].is_dir && n > 0 && (size_t)n < sizeof path
+                                     ? boxart_get(path, true) : NULL;
+    }
+    coverflow_first = first;
+    coverflow_last = last;
+}
+
+static void coverflow_title(uint16_t *fb, int y) {
+    int width = coverflow_title_width;
+    int x = (SCREEN_WIDTH - width) / 2;
+    render_rounded_rect_alpha(fb, x - UI_S(8), y, width + UI_S(16),
+                              ITEM_HEIGHT, UI_S(7), COLOR_BG, 220);
+    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, x, y,
+                           coverflow_title_text, COLOR_TEXT, x, y, width, ITEM_HEIGHT);
+}
+
+static void render_coverflow_item(uint16_t *fb, int index, float visual) {
+    if (index < coverflow_first || index >= coverflow_last) return;
+    float distance = (float)index - visual;
+    float depth = distance < 0 ? -distance : distance;
+    bool selected = index == selected_index;
+    if (!selected && depth > coverflow_neighbors() + 0.8f) return;
+    const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
+    int spacing = SCREEN_WIDTH / 5 + (theme ? (int)theme->coverflow_spacing - 8 : 0);
+    /* Clamp extreme theme spacing so outer neighbors stay inside the panel. */
+    if (spacing > SCREEN_WIDTH / 5) spacing = SCREEN_WIDTH / 5;
+    if (spacing < SCREEN_WIDTH / 6) spacing = SCREEN_WIDTH / 6;
+    int center = SCREEN_WIDTH / 2 + (int)(distance * spacing);
+    int width = SCREEN_WIDTH * 24 / 100;
+    int height = SCREEN_HEIGHT * 47 / 100;
+    if (!selected) {
+        int scale = theme ? (int)theme->coverflow_side_scale_percent : 66;
+        if (depth > 1.1f) scale = scale * 3 / 4;
+        int margin = 2 * (spacing - width / 2 - UI_S(12));
+        int scaled_width = width * scale / 100;
+        if (scaled_width > margin) scaled_width = margin;
+        if (scaled_width <= 0) return;
+        height = height * scaled_width / width;
+        width = scaled_width;
+    }
+    int edge = center < SCREEN_WIDTH - center ? center : SCREEN_WIDTH - center;
+    int inset = UI_S(12);
+    if (edge <= inset + UI_S(14)) return;
+    if (width / 2 > edge - inset) {
+        int fitted = 2 * (edge - inset);
+        height = height * fitted / width;
+        width = fitted;
+    }
+    int y = SCREEN_HEIGHT * 44 / 100 - height / 2 + (selected ? 0 : (int)(depth * UI_S(7)));
+    int x = center - width / 2;
+    const Thumbnail *cover = coverflow_images[index - coverflow_first];
+    render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4),
+                              width + UI_S(8), height + UI_S(8), UI_S(8),
+                              selected ? COLOR_SELECT_BG : COLOR_BG, selected ? 142 : 120);
+    if (cover) {
+        render_thumbnail_contained(fb, cover, x, y, width, height);
+    } else {
+        /* A card silhouette works with every pack and costs no texture memory. */
+        int line = width / 5;
+        uint16_t color = selected ? COLOR_SELECT_TEXT : COLOR_TEXT;
+        render_rounded_rect_alpha(fb, center - line, y + height / 3,
+                                  line * 2, height / 3, UI_S(4), color, 130);
+        render_fill_rect(fb, center - line, y + height * 3 / 4,
+                         line * 2, UI_S(2), color);
+    }
+}
+
+static void render_enhanced_library(uint16_t *fb) {
+    render_header(fb, system_display_name(get_basename(current_path)));
+    if (entry_count <= 0) {
+        const char *message = tr_or("enhanced.library.empty", "No games in this collection");
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, (SCREEN_WIDTH - font_measure_text(message)) / 2,
+                       SCREEN_HEIGHT / 2, message, COLOR_TEXT);
+        render_legend(fb, LEGEND_X_NONE, 0, 0);
+        return;
+    }
+    float progress = 1.0f;
+    if (coverflow_frame < SYSTEM_CAROUSEL_FRAMES) {
+        coverflow_frame++;
+        progress = (float)coverflow_frame / SYSTEM_CAROUSEL_FRAMES;
+    }
+    coverflow_visible = coverflow_from + (selected_index - coverflow_from) * carousel_smoothstep(progress);
+    int left = coverflow_first, right = coverflow_last - 1;
+    while (left <= right) {
+        int at;
+        if (coverflow_visible - left >= right - coverflow_visible) at = left++;
+        else at = right--;
+        if (at != selected_index) render_coverflow_item(fb, at, coverflow_visible);
+    }
+    render_coverflow_item(fb, selected_index, coverflow_visible);
+    coverflow_title(fb, SCREEN_HEIGHT * 76 / 100);
+    render_legend(fb, LEGEND_X_NONE, 1, 1);
+}
+
+static void render_enhanced_game_details(uint16_t *fb) {
+    render_header(fb, tr_or("enhanced.details.title", "Game details"));
+    if (selected_index < 0 || selected_index >= entry_count) return;
+    render_coverflow_item(fb, selected_index, (float)selected_index);
+    coverflow_title(fb, SCREEN_HEIGHT * 76 / 100);
+    const char *hint = tr_or("enhanced.details.play_back", "A  Play    B  Back");
+    font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
+                   (SCREEN_WIDTH - font_measure_text(hint)) / 2,
+                   SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5), hint, COLOR_LEGEND);
+}
+
 static void render_browser_grid(uint16_t *fb) {
     const RenderTheme *theme = render_theme_current();
     int cols = theme->grid_columns, rows = theme->grid_rows;
@@ -6125,8 +6383,33 @@ static void render_browser_grid(uint16_t *fb) {
     render_legend(fb, LEGEND_X_NONE, 1, 1);
 }
 
+static void launch_by_path(const char *path);
+
 static void handle_input(void) {
     input_update();
+
+    if (enhanced_details_view()) {
+        NavModel *nav = &enhanced_settings_navigation;
+        NavEffect effect;
+        if (input_was_pressed(FROG_BTN_START)) {
+            open_enhanced_settings();
+        } else if (input_was_pressed(FROG_BTN_B)) {
+            nav_model_handle(nav, NULL, NAV_INPUT_BACK, &effect);
+        } else if (input_was_pressed(FROG_BTN_A) &&
+                   selected_index >= 0 && selected_index < entry_count &&
+                   !entries[selected_index].is_dir &&
+                   strcmp(nav->state.game_id, entries[selected_index].name) == 0 &&
+                   nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect) &&
+                   effect == NAV_EFFECT_LAUNCH_GAME) {
+            char path[1024];
+            int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[selected_index].name);
+            if (n > 0 && (size_t)n < sizeof path) {
+                nav->state.screen = NAV_GAME_LIBRARY;
+                launch_by_path(path);
+            }
+        }
+        return;
+    }
 
     if (viewing_info) {
         if (input_was_pressed(FROG_BTN_A) || input_was_pressed(FROG_BTN_B) ||
@@ -6508,6 +6791,21 @@ static void handle_input(void) {
         }
     }
 
+    if (enhanced_library_view() && input_was_pressed(FROG_BTN_A) &&
+        selected_index >= 0 && selected_index < entry_count && !entries[selected_index].is_dir) {
+        const char *platform = enhanced_library_relative_path();
+        size_t length = strcspn(platform, "/");
+        NavModel *nav = &enhanced_settings_navigation;
+        NavEffect effect;
+        nav_model_init(nav, true);
+        nav->state.screen = NAV_GAME_LIBRARY;
+        snprintf(nav->state.platform_id, sizeof nav->state.platform_id, "%.*s",
+                 (int)length, platform);
+        snprintf(nav->state.game_id, sizeof nav->state.game_id, "%s", entries[selected_index].name);
+        nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect);
+        return;
+    }
+
     if (input_was_pressed(FROG_BTN_A) && selected_index < entry_count) {
         input_log_activation();
         if (viewing_search) {
@@ -6630,6 +6928,16 @@ static void handle_input(void) {
                 select_visible_entry(visible_entry_named(games_tab_entries[games_tab_selected].name));
             strncpy(current_path, ROMS_PATH, MAX_PATH_LEN-1);
             switch_home_open = render_theme_current()->home_layout != RENDER_HOME_DEFAULT;
+        } else if (enhanced_library_view()) {
+            const char *relative = enhanced_library_relative_path();
+            char platform[NAV_ID_MAX];
+            snprintf(platform, sizeof platform, "%.*s", (int)strcspn(relative, "/"), relative);
+            ui_transition_start(-1);
+            enhanced_settings_navigation.state.screen = NAV_PLATFORM_HOME;
+            scan_directory(ROMS_PATH);
+            snprintf(current_path, sizeof current_path, "%s", ROMS_PATH);
+            select_visible_entry(visible_entry_named(platform));
+            return;
         } else if (!settings_graphical_home &&
                    render_theme_current()->home_layout != RENDER_HOME_DEFAULT &&
                    strcmp(current_path, ROMS_PATH) == 0 && !switch_home_open) {
@@ -6696,6 +7004,9 @@ static void handle_input(void) {
             if (next >= entry_count) next = entry_count - 1;
             selected_index = next;
         }
+    } else if (enhanced_library_view()) {
+        if (input_repeat(FROG_BTN_LEFT) && selected_index > 0) selected_index--;
+        if (input_repeat(FROG_BTN_RIGHT) && selected_index + 1 < entry_count) selected_index++;
     } else if (browser_grid_view()) {
         int cols = render_theme_current()->grid_columns;
         int row = selected_index / cols;
@@ -7127,6 +7438,10 @@ void retro_init(void) {
 }
 
 void retro_deinit(void) {
+    boxart_clear();
+    coverflow_directory[0] = 0;
+    coverflow_target = -1;
+    coverflow_first = coverflow_last = 0;
     ui_sounds_ready = false;
     ui_sound_next_ms = 0;
     for (int i = 0; i < 8; i++) {
@@ -7598,6 +7913,7 @@ void retro_run(void) {
     bool old_audio_enabled = ui_audio_enabled();
     bool old_enhanced_audio = settings_graphical_home != 0;
     enum EnhancedHomeItemKind old_home_kind = enhanced_home_kind;
+    bool old_details = enhanced_details_view();
     int old_selected = selected_index;
     int old_scroll = scroll_offset;
     int old_settings_row = settings_menu_idx;
@@ -7619,6 +7935,7 @@ void retro_run(void) {
     handle_input();
     bool enhanced_theme_changed = enhanced_theme_sync();
     prepare_enhanced_grid();
+    prepare_enhanced_library(enhanced_theme_changed);
     RenderThemeScreen theme_screen = (settings_menu_active || viewing_info) ? RENDER_SCREEN_SETTINGS :
         viewing_recents ? RENDER_SCREEN_RECENTS :
         (viewing_apps || apps_browsing || viewing_activity) ? RENDER_SCREEN_APPS :
@@ -7631,6 +7948,7 @@ void retro_run(void) {
                      old_favourites == viewing_favourites &&
                      old_apps == viewing_apps && old_activity == viewing_activity &&
                      old_search == viewing_search && old_info == viewing_info &&
+                     old_details == enhanced_details_view() &&
                      strcmp(old_path, current_path) == 0;
     if (!menu_pill_view()) {
         pill_animation_reset(&menu_pill_animation, 0);
@@ -7908,11 +8226,12 @@ void retro_run(void) {
             sig = sig*33u + (unsigned)(switch_home_open * 8 + switch_home_index);
             sig = sig*33u + (unsigned)(viewing_recents*16 + viewing_favourites*8 + viewing_apps*4 + apps_browsing*2 + viewing_activity + viewing_search*32);
             sig = sig*33u + (unsigned)viewing_info;
+            sig = sig*33u + (unsigned)enhanced_details_view();
             sig = sig*33u + (unsigned)game_switcher_fullscreen;
             for (const char *p = current_path; *p; p++) sig = sig*33u + (unsigned char)*p;
         }
         redraw = first || sig != last_sig || banner_is_animating() ||
-                 system_carousel_is_animating() || enhanced_home_is_animating() ||
+                 system_carousel_is_animating() || enhanced_home_is_animating() || coverflow_animating() ||
                  pill_animation_active(&menu_pill_animation) ||
                  activity_marquee_active() || (!settings_graphical_home && system_grid_marquee_active()) ||
                  view_transition_frame <= VIEW_TRANSITION_FRAMES ||
@@ -7974,6 +8293,10 @@ void retro_run(void) {
                 render_enhanced_home(framebuffer);
             else
                 render_system_grid(framebuffer);
+        } else if (enhanced_details_view()) {
+            render_enhanced_game_details(framebuffer);
+        } else if (enhanced_library_view()) {
+            render_enhanced_library(framebuffer);
         } else if (browser_grid_view()) {
             render_browser_grid(framebuffer);
         } else {
