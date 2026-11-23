@@ -8223,6 +8223,8 @@ void retro_run(void) {
             sig = sig*33u + (unsigned)settings_render_scheme_idx;
             sig = sig*33u + (unsigned)selected_index;
             sig = sig*33u + (unsigned)scroll_offset;
+            /* The Enhanced Home utility kind can change without changing the browser cursor or offset (for example when moving onto Apps in reduced-motion mode). */
+            sig = sig*33u + (unsigned)(enhanced_home_view() ? enhanced_home_kind : 0);
             sig = sig*33u + (unsigned)(switch_home_open * 8 + switch_home_index);
             sig = sig*33u + (unsigned)(viewing_recents*16 + viewing_favourites*8 + viewing_apps*4 + apps_browsing*2 + viewing_activity + viewing_search*32);
             sig = sig*33u + (unsigned)viewing_info;

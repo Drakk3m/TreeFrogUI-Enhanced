@@ -714,6 +714,79 @@ static void test_coverflow(const char *root) {
     puts("PASS bounded CoverFlow cache, interrupted navigation, edge cases and library lifecycle");
 }
 
+static unsigned ribbon_frames;
+
+static void capture_ribbon(const void *pixels, unsigned width, unsigned height, size_t pitch) {
+    assert(pixels && width == 640 && height == 480 && pitch == 1280);
+    ribbon_frames++;
+}
+
+static void ribbon_step(FrogButton button, int expected, int platforms) {
+    unsigned before = ribbon_frames;
+    int previous = enhanced_home_index(platforms);
+    input_set_ext_raw(1u << input_get_raw_bit(button));
+    retro_run();
+    input_set_ext_raw(0);
+    retro_run();
+    assert(enhanced_home_index(platforms) == expected);
+    int offset = expected - 2;
+    if (offset < 0) offset = 0;
+    if (offset > platforms - 2) offset = platforms - 2;
+    if (offset < 0) offset = 0;
+    assert(scroll_offset == offset && enhanced_home_visible_offset == (float)offset);
+    if (expected != previous) {
+        if (ribbon_frames == before)
+            fprintf(stderr, "Home selection %d/%d changed without presenting a frame\n",
+                    expected, platforms + 3);
+        assert(ribbon_frames > before);
+    }
+}
+
+static void test_home_ribbon_presentation(void) {
+    settings_graphical_home = 1;
+    settings_anim = 0;
+    settings_backgrounds = 0;
+    settings_file_cache = 0;
+    ui_toast_frames = 0;
+    view_transition_frame = VIEW_TRANSITION_FRAMES + 1;
+    strcpy(current_path, ROMS_PATH);
+    enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+    scan_directory(ROMS_PATH);
+    int full_count = entry_count;
+    assert(enhanced_home_platform_count() > 5 && enhanced_home_platform_first() == 0);
+    framebuffer = calloc(640 * 480, sizeof(*framebuffer));
+    assert(framebuffer);
+    retro_set_video_refresh(capture_ribbon);
+    const int counts[] = {full_count, 0, 1};
+    for (size_t i = 0; i < sizeof counts / sizeof counts[0]; i++) {
+        entry_count = counts[i];
+        selected_index = 0;
+        enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+        enhanced_grid_prepared = false;
+        retro_run();
+        int platforms = enhanced_home_platform_count();
+        for (int index = 1; index < platforms + 3; index++)
+            ribbon_step(FROG_BTN_RIGHT, index, platforms);
+        ribbon_step(FROG_BTN_RIGHT, platforms + 2, platforms);
+        for (int index = platforms + 1; index >= 0; index--)
+            ribbon_step(FROG_BTN_LEFT, index, platforms);
+        ribbon_step(FROG_BTN_LEFT, 0, platforms);
+    }
+    settings_graphical_home = 0;
+    settings_explore_layout = STYLE_HORIZONTAL;
+    entry_count = full_count;
+    selected_index = 0;
+    assert(horizontal_system_view());
+    press(FROG_BTN_LEFT);
+    assert(selected_index == full_count - 1); /* Classic circular navigation. */
+    press(FROG_BTN_RIGHT);
+    assert(selected_index == 0);
+    retro_set_video_refresh(NULL);
+    free(framebuffer);
+    framebuffer = NULL;
+    puts("PASS Home utility selection presents a frame even at a settled scroll offset");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
@@ -836,5 +909,6 @@ int main(int argc, char **argv) {
     test_ui_sounds(argv[1]);
     test_ribbon(argv[1]);
     test_coverflow(argv[1]);
+    test_home_ribbon_presentation();
     return 0;
 }
