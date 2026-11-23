@@ -34,6 +34,7 @@
 #include "common/pill_animation.h"
 #include "theme.h"
 #include "theme_resource.h"
+#include "filelist.h"
 #include "frogui_settings.h"
 #include "theme_profile.h"
 #include "render_theme.h"
@@ -2624,7 +2625,77 @@ static void cache_store(const char *path, uint64_t mtime, int at_root) {
     else      unlink(tmp);
 }
 
+/* Presentation data belongs only to the current scanned listing. Keep it
+ * outside DirEntry so neither the on-disk cache nor the launch identity changes. */
+enum { FILELIST_MAX_ENTRIES = 100000, FILELIST_TITLE_BYTES = 512 * 1024 };
+static uint32_t *filelist_offsets;
+static unsigned filelist_scan_generation;
+static char *filelist_titles;
+static size_t filelist_used, filelist_capacity;
+static bool filelist_allocation_failed;
+
+static void clear_filelist_titles(void) {
+    free(filelist_offsets);
+    free(filelist_titles);
+    filelist_offsets = NULL;
+    filelist_titles = NULL;
+    filelist_used = filelist_capacity = 0;
+    filelist_allocation_failed = false;
+}
+
+static void accept_filelist_title(void *context, const char *filename, const char *title) {
+    (void)context;
+    if (!title[0] || filelist_allocation_failed) return;
+    size_t bytes = strlen(title) + 1;
+    if (bytes > FILELIST_TITLE_BYTES - filelist_used) return;
+
+    int low = 0, high = entry_count;
+    while (low < high) {
+        int mid = low + (high - low) / 2;
+        if (entries[mid].is_dir || strcasecmp(entries[mid].name, filename) < 0)
+            low = mid + 1;
+        else high = mid;
+    }
+    /* The listing is case-insensitively sorted. Match exact bytes within
+     * the equal run, including on filesystems with case-distinct ROMs. */
+    while (low < entry_count && !strcasecmp(entries[low].name, filename) &&
+           strcmp(entries[low].name, filename)) low++;
+    if (low >= entry_count || entries[low].is_dir || strcmp(entries[low].name, filename))
+        return;
+    if (!filelist_offsets) {
+        filelist_offsets = calloc((size_t)entry_count, sizeof(*filelist_offsets));
+        if (!filelist_offsets) { filelist_allocation_failed = true; return; }
+    }
+    if (filelist_offsets[low]) return; /* First valid nonempty title wins. */
+    if (filelist_used + bytes > filelist_capacity) {
+        size_t capacity = filelist_capacity ? filelist_capacity * 2 : 4096;
+        while (capacity < filelist_used + bytes) capacity *= 2;
+        char *grown = realloc(filelist_titles, capacity);
+        if (!grown) { filelist_allocation_failed = true; return; }
+        filelist_titles = grown;
+        filelist_capacity = capacity;
+    }
+    memcpy(filelist_titles + filelist_used, title, bytes);
+    filelist_offsets[low] = (uint32_t)filelist_used + 1;
+    filelist_used += bytes;
+}
+
+static void load_platform_filelist(const char *path) {
+    size_t root = strlen(ROMS_PATH);
+    if (!settings_graphical_home || entry_count <= 0 || entry_count > FILELIST_MAX_ENTRIES ||
+        strncmp(path, ROMS_PATH, root) != 0 || path[root] != '/') return;
+    const char *platform = path + root + 1;
+    if (!*platform || strchr(platform, '/') || is_app_folder_name(platform)) return;
+    char csv[MAX_PATH_LEN];
+    int written = snprintf(csv, sizeof csv, "%s/filelist.csv", path);
+    if (written <= 0 || (size_t)written >= sizeof csv) return;
+    if (!filelist_read(csv, accept_filelist_title, NULL) || filelist_allocation_failed)
+        clear_filelist_titles();
+}
+
 static void scan_directory(const char *path) {
+    clear_filelist_titles();
+    filelist_scan_generation++;
     /* An unopenable dir is NOT an early return: fall through with an empty
      * listing so the root still gets its Settings/Recents rows. The old
      * early-return left entries == NULL while the renderer drew the list →
@@ -2778,6 +2849,7 @@ static void scan_directory(const char *path) {
     }
 done:
     if (!entries) entry_count = 0;   /* belt: renderer must never walk NULL */
+    if (!at_root) load_platform_filelist(path);
     viewing_recents = false;
     viewing_favourites = false;
     viewing_apps = false;
@@ -6081,13 +6153,17 @@ static float coverflow_from, coverflow_visible;
 
 static char coverflow_title_text[sizeof entries[0].name + 3];
 static int coverflow_title_width;
+static unsigned coverflow_title_generation;
 
 static void prepare_coverflow_title(const DirEntry *entry) {
     char name[sizeof entry->name];
-    snprintf(name, sizeof name, "%s", entry->name);
-    char *dot = strrchr(name, '.');
-    if (settings_hide_extensions && !entry->is_dir && dot && dot != name)
-        *dot = 0;
+    uint32_t offset = filelist_offsets && !entry->is_dir
+                    ? filelist_offsets[entry - entries] : 0;
+    snprintf(name, sizeof name, "%s", offset ? filelist_titles + offset - 1 : entry->name);
+    if (!offset && !entry->is_dir) {
+        char *dot = strrchr(name, '.');
+        if (dot && dot != name) *dot = 0;
+    }
 
     int available = SCREEN_WIDTH - UI_S(40);
     snprintf(coverflow_title_text, sizeof coverflow_title_text, "%s", name);
@@ -6143,8 +6219,11 @@ static void prepare_enhanced_library(bool theme_changed) {
 
     bool motion = enhanced_home_motion_enabled() && !enhanced_details_view();
     bool moving = coverflow_target >= 0 && coverflow_target != selected_index && motion;
-    if (coverflow_target != selected_index) {
+    if (coverflow_target != selected_index || coverflow_title_generation != filelist_scan_generation) {
         prepare_coverflow_title(&entries[selected_index]);
+        coverflow_title_generation = filelist_scan_generation;
+    }
+    if (coverflow_target != selected_index) {
         float start = moving ? coverflow_visible : (float)selected_index;
         if (start < selected_index - 1) start = selected_index - 1;
         if (start > selected_index + 1) start = selected_index + 1;
@@ -7438,6 +7517,7 @@ void retro_init(void) {
 }
 
 void retro_deinit(void) {
+    clear_filelist_titles();
     boxart_clear();
     coverflow_directory[0] = 0;
     coverflow_target = -1;
@@ -8229,6 +8309,8 @@ void retro_run(void) {
             sig = sig*33u + (unsigned)(viewing_recents*16 + viewing_favourites*8 + viewing_apps*4 + apps_browsing*2 + viewing_activity + viewing_search*32);
             sig = sig*33u + (unsigned)viewing_info;
             sig = sig*33u + (unsigned)enhanced_details_view();
+            if (enhanced_library_view())
+                sig = sig*33u + filelist_scan_generation;
             sig = sig*33u + (unsigned)game_switcher_fullscreen;
             for (const char *p = current_path; *p; p++) sig = sig*33u + (unsigned char)*p;
         }
