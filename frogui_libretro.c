@@ -6243,23 +6243,14 @@ static char coverflow_title_text[sizeof entries[0].name + 3];
 static int coverflow_title_width;
 static unsigned coverflow_title_generation;
 
-static void prepare_coverflow_title(const DirEntry *entry) {
-    char name[sizeof entry->name];
-    uint32_t offset = filelist_offsets && !entry->is_dir
-                    ? filelist_offsets[entry - entries] : 0;
-    snprintf(name, sizeof name, "%s", offset ? filelist_titles + offset - 1 : entry->name);
-    if (!offset && !entry->is_dir) {
-        char *dot = strrchr(name, '.');
-        if (dot && dot != name) *dot = 0;
-    }
+static char details_title_text[sizeof coverflow_title_text];
 
-    int available = SCREEN_WIDTH - UI_S(40);
-    snprintf(coverflow_title_text, sizeof coverflow_title_text, "%s", name);
-    coverflow_title_width = font_measure_text(name);
-    if (coverflow_title_width <= available) return;
+static void fit_enhanced_title(char *output, size_t capacity, const char *name,
+                               int available) {
+    snprintf(output, capacity, "%s", name);
+    if (font_measure_text(name) <= available) return;
 
-    /* Search byte offsets, measuring only prefixes ending at a UTF-8 boundary.
-     * Work is bounded and only done when selection or its presentation changes. */
+    /* Search byte offsets, measuring only prefixes ending at a UTF-8 boundary. */
     size_t low = 0, high = strlen(name), keep = 0;
     char candidate[sizeof coverflow_title_text];
     while (low < high) {
@@ -6274,8 +6265,24 @@ static void prepare_coverflow_title(const DirEntry *entry) {
             high = middle;
         }
     }
-    snprintf(coverflow_title_text, sizeof coverflow_title_text, "%.*s...", (int)keep, name);
+    snprintf(output, capacity, "%.*s...", (int)keep, name);
+}
+
+static void prepare_coverflow_title(const DirEntry *entry) {
+    char name[sizeof entry->name];
+    uint32_t offset = filelist_offsets && !entry->is_dir
+                    ? filelist_offsets[entry - entries] : 0;
+    snprintf(name, sizeof name, "%s", offset ? filelist_titles + offset - 1 : entry->name);
+    if (!offset && !entry->is_dir) {
+        char *dot = strrchr(name, '.');
+        if (dot && dot != name) *dot = 0;
+    }
+
+    fit_enhanced_title(coverflow_title_text, sizeof coverflow_title_text, name,
+                       SCREEN_WIDTH - UI_S(40));
     coverflow_title_width = font_measure_text(coverflow_title_text);
+    fit_enhanced_title(details_title_text, sizeof details_title_text, name,
+                       SCREEN_WIDTH - CONTENT_X - UI_S(80));
 }
 
 static int coverflow_neighbors(void) {
@@ -6353,6 +6360,14 @@ static void coverflow_title(uint16_t *fb, int y) {
                            coverflow_title_text, COLOR_TEXT, x, y, width, ITEM_HEIGHT);
 }
 
+static int coverflow_spacing(const ThemePresentation *theme) {
+    int spacing = SCREEN_WIDTH / 5 + (theme ? (int)theme->coverflow_spacing - 8 : 0);
+    /* Clamp extreme theme spacing so outer neighbors stay inside the panel. */
+    if (spacing > SCREEN_WIDTH / 5) spacing = SCREEN_WIDTH / 5;
+    if (spacing < SCREEN_WIDTH / 6) spacing = SCREEN_WIDTH / 6;
+    return spacing;
+}
+
 static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     if (index < coverflow_first || index >= coverflow_last) return;
     float distance = (float)index - visual;
@@ -6360,10 +6375,7 @@ static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     bool selected = index == selected_index;
     if (!selected && depth > coverflow_neighbors() + 0.8f) return;
     const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
-    int spacing = SCREEN_WIDTH / 5 + (theme ? (int)theme->coverflow_spacing - 8 : 0);
-    /* Clamp extreme theme spacing so outer neighbors stay inside the panel. */
-    if (spacing > SCREEN_WIDTH / 5) spacing = SCREEN_WIDTH / 5;
-    if (spacing < SCREEN_WIDTH / 6) spacing = SCREEN_WIDTH / 6;
+    int spacing = coverflow_spacing(theme);
     int center = SCREEN_WIDTH / 2 + (int)(distance * spacing);
     int width = SCREEN_WIDTH * 24 / 100;
     int height = SCREEN_HEIGHT * 47 / 100;
@@ -6404,6 +6416,9 @@ static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     }
 }
 
+static float details_cover_start_offset;
+static int details_cover_transition_frame = SYSTEM_CAROUSEL_FRAMES;
+
 static void render_enhanced_library(uint16_t *fb) {
     render_header(fb, system_display_name(get_basename(current_path)));
     if (entry_count <= 0) {
@@ -6432,10 +6447,56 @@ static void render_enhanced_library(uint16_t *fb) {
 }
 
 static void render_enhanced_game_details(uint16_t *fb) {
-    render_header(fb, tr_or("enhanced.details.title", "Game details"));
     if (selected_index < 0 || selected_index >= entry_count) return;
-    render_coverflow_item(fb, selected_index, (float)selected_index);
-    coverflow_title(fb, SCREEN_HEIGHT * 76 / 100);
+    render_header(fb, "");
+    int baseline, cap_height;
+    font_cap_metrics(&baseline, &cap_height);
+    int title_y = HEADER_HEIGHT / 2 - (baseline - cap_height / 2);
+    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, CONTENT_X, title_y,
+                           details_title_text, COLOR_HEADER, CONTENT_X, 0,
+                           SCREEN_WIDTH - CONTENT_X - UI_S(80), HEADER_HEIGHT);
+
+    const Thumbnail *cover = NULL;
+    if (selected_index >= coverflow_first && selected_index < coverflow_last)
+        cover = coverflow_images[selected_index - coverflow_first];
+    const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
+    int source_center = SCREEN_WIDTH / 2 +
+                        (int)(details_cover_start_offset * coverflow_spacing(theme));
+    int source_width = SCREEN_WIDTH * 24 / 100;
+    int source_height = SCREEN_HEIGHT * 47 / 100;
+    int source_y = SCREEN_HEIGHT * 44 / 100 - source_height / 2;
+    int target_x = UI_S(24);
+    int target_y = HEADER_HEIGHT + UI_S(20);
+    int target_width = SCREEN_WIDTH * 37 / 100;
+    int target_height = SCREEN_HEIGHT * 52 / 100;
+    float progress = 1.0f;
+    if (details_cover_transition_frame < SYSTEM_CAROUSEL_FRAMES) {
+        details_cover_transition_frame++;
+        progress = (float)details_cover_transition_frame / SYSTEM_CAROUSEL_FRAMES;
+    }
+    float eased = carousel_smoothstep(progress);
+    int center = (int)(source_center + (target_x + target_width / 2 - source_center) * eased);
+    int height = (int)(source_height + (target_height - source_height) * eased);
+    int width = (int)(source_width + (target_width - source_width) * eased);
+    float flip = fabsf(1.0f - 2.0f * eased);
+    int silhouette_width = (int)(width * flip);
+    if (silhouette_width < UI_S(2)) silhouette_width = UI_S(2);
+    int x = center - silhouette_width / 2;
+    int y = (int)(source_y + (target_y - source_y) * eased);
+    render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4),
+                              silhouette_width + UI_S(8), height + UI_S(8),
+                              UI_S(8), COLOR_BG, 140);
+    if (cover) {
+        render_thumbnail_projected(fb, cover, center - width / 2, y,
+                                   width, height, flip);
+    } else {
+        int line = silhouette_width / 5;
+        render_rounded_rect_alpha(fb, center - line, y + height / 3,
+                                  line * 2, height / 3, UI_S(4),
+                                  COLOR_TEXT, 130);
+        render_fill_rect(fb, center - line, y + height * 3 / 4,
+                         line * 2, UI_S(2), COLOR_TEXT);
+    }
     const char *hint = tr_or("enhanced.details.play_back", "A  Play    B  Back");
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
                    (SCREEN_WIDTH - font_measure_text(hint)) / 2,
@@ -6969,7 +7030,13 @@ static void handle_input(void) {
         snprintf(nav->state.platform_id, sizeof nav->state.platform_id, "%.*s",
                  (int)length, platform);
         snprintf(nav->state.game_id, sizeof nav->state.game_id, "%s", entries[selected_index].name);
-        nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect);
+        if (nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect) &&
+            effect == NAV_EFFECT_OPEN_DETAILS) {
+            details_cover_start_offset = coverflow_target >= 0
+                                        ? selected_index - coverflow_visible : 0.0f;
+            details_cover_transition_frame = enhanced_home_motion_enabled()
+                                           ? 0 : SYSTEM_CAROUSEL_FRAMES;
+        }
         return;
     }
 
@@ -8405,6 +8472,7 @@ void retro_run(void) {
         }
         redraw = first || sig != last_sig || banner_is_animating() ||
                  system_carousel_is_animating() || enhanced_home_is_animating() || coverflow_animating() ||
+                 (enhanced_details_view() && details_cover_transition_frame < SYSTEM_CAROUSEL_FRAMES) ||
                  pill_animation_active(&menu_pill_animation) ||
                  activity_marquee_active() || (!settings_graphical_home && system_grid_marquee_active()) ||
                  view_transition_frame <= VIEW_TRANSITION_FRAMES ||

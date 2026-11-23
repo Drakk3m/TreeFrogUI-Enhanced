@@ -181,6 +181,9 @@ void free_thumbnail(Thumbnail *thumb);
 
 // Draw thumbnail in the thumbnail area
 void render_thumbnail(uint16_t *framebuffer, const Thumbnail *thumb);
+/* Aspect-fit the image, then project its width by a factor in [0, 1]. */
+void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
+                                int x, int y, int width, int height, float projection);
 void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,
                                 int x, int y, int width, int height);
 /* Draw an RGBA theme canvas centered and aspect-fitted to the current panel. */

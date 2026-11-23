@@ -1036,9 +1036,39 @@ int main(int argc, char **argv) {
     restore_settings_listing();
     assert(strcmp(current_path, collection) == 0);
     assert(strcmp(entries[selected_index].name, "Example.nes") == 0);
+    int previous_motion = settings_anim;
+    settings_anim = 1;
     press(FROG_BTN_A);
     assert(enhanced_details_view() && access(test_launch, F_OK) != 0);
     check_csv_title("Example.nes", "Custom Launch Title");
+    assert(strcmp(details_title_text, "Custom Launch Title") == 0);
+    assert(details_cover_transition_frame == 0);
+    uint16_t *details_frame = calloc((size_t)SCREEN_WIDTH * SCREEN_HEIGHT, sizeof *details_frame);
+    assert(details_frame);
+    uint16_t red = 0xf800;
+    Thumbnail cover = {.width = 1, .height = 1, .data = &red};
+    coverflow_images[selected_index - coverflow_first] = &cover;
+    render_enhanced_game_details(details_frame);
+    int cover_y = SCREEN_HEIGHT * 44 / 100;
+    assert(details_frame[cover_y * SCREEN_WIDTH + SCREEN_WIDTH / 2] == red);
+    for (int i = 1; i < SYSTEM_CAROUSEL_FRAMES; i++) {
+        memset(details_frame, 0, (size_t)SCREEN_WIDTH * SCREEN_HEIGHT * sizeof *details_frame);
+        render_enhanced_game_details(details_frame);
+        if (i + 1 == SYSTEM_CAROUSEL_FRAMES / 2) {
+            int midpoint_y = (cover_y + HEADER_HEIGHT + UI_S(20) + SCREEN_HEIGHT * 52 / 200) / 2;
+            int red_pixels = 0;
+            for (int x = 0; x < SCREEN_WIDTH; x++)
+                red_pixels += details_frame[midpoint_y * SCREEN_WIDTH + x] == red;
+            assert(red_pixels == 1);
+        }
+    }
+    int left_x = SCREEN_WIDTH * 18 / 100;
+    int left_y = HEADER_HEIGHT + UI_S(20) + SCREEN_HEIGHT * 52 / 200;
+    assert(details_cover_transition_frame == SYSTEM_CAROUSEL_FRAMES);
+    assert(details_frame[left_y * SCREEN_WIDTH + left_x] == red);
+    assert(details_frame[left_y * SCREEN_WIDTH + SCREEN_WIDTH * 3 / 4] == 0);
+    coverflow_images[selected_index - coverflow_first] = NULL;
+    free(details_frame);
     press(FROG_BTN_START);
     assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_GAME_DETAILS);
     press(FROG_BTN_B);
@@ -1046,8 +1076,11 @@ int main(int argc, char **argv) {
     press(FROG_BTN_B);
     assert(enhanced_library_view() && !enhanced_details_view() && selected_index == 0);
     assert(access(test_launch, F_OK) != 0);
+    settings_anim = 0;
     press(FROG_BTN_A);
     assert(enhanced_details_view());
+    assert(details_cover_transition_frame == SYSTEM_CAROUSEL_FRAMES);
+    settings_anim = previous_motion;
     press(FROG_BTN_A);
     assert(!enhanced_details_view());
     FILE *handoff = fopen(test_launch, "r");
