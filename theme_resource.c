@@ -155,7 +155,8 @@ static ThemeResourceKind resource_kind(const char *id) {
     if (scoped_id(id, "platform.", ".icon")) return THEME_RESOURCE_PLATFORM_ICON;
     if (scoped_id(id, "settings.", ".icon")) return THEME_RESOURCE_SETTINGS_ICON;
     if (strcmp(id, "cover.placeholder") == 0) return THEME_RESOURCE_COVER_PLACEHOLDER;
-    if (strcmp(id, "achievement.badge") == 0) return THEME_RESOURCE_ACHIEVEMENT_BADGE;
+    if (strcmp(id, "achievement.badge") == 0 || strcmp(id, "ra.trophy") == 0)
+        return THEME_RESOURCE_ACHIEVEMENT_BADGE;
     if (strcmp(id, "navigation.sound") == 0 ||
         strcmp(id, "navigation.move.sound") == 0 ||
         strcmp(id, "navigation.select.sound") == 0 ||

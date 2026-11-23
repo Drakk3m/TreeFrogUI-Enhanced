@@ -60,6 +60,9 @@ path=icons/no-cover.png
 [resource.achievement.badge]
 path=icons/no-badge.png
 
+[resource.ra.trophy]
+path=icons/achievements.png
+
 [resource.navigation.move.sound]
 path=sounds/move.wav
 
@@ -69,7 +72,7 @@ path=sounds/confirm.wav
 
 - Use UTF-8 text without a BOM. Each setting is `key=value`. Whole-line comments start with `#` or `;`. The manifest is at most 16 KiB, with up to 128 recognized mappings. `manifest_version=1` is required. ID and name are optional metadata. Provide both screen fields for exact panel matching, or omit both for portable native scaling. A malformed required field or unsupported version prevents activation. Unknown keys and resource IDs in v1 are ignored for forwards compatibility. Use a single `path` per logical ID.
 - Paths are relative to the theme directory, up to 255 bytes, with forward slashes. Absolute paths, drive prefixes, backslashes, empty or traversal components, symlink components and nonregular files are rejected. The manager opens assets relative to a held directory descriptor. A failed reload leaves the previous manifest intact. Switching or rebooting starts a fresh generation and discards the previous Enhanced decoded resources.
-- Platform keys use the lowercase ROM folder when it is an ASCII token. Folder display labels and physical asset filenames can change independently. The supported IDs are `home.background`, `platform.<key>.background`, `platform.<key>.icon`, `settings.<key>.icon`, `cover.placeholder`, `achievement.badge` and the optional navigation sound IDs described below.
+- Platform keys use the lowercase ROM folder when it is an ASCII token. Folder display labels and physical asset filenames can change independently. The supported IDs are `home.background`, `platform.<key>.background`, `platform.<key>.icon`, `settings.<key>.icon`, `cover.placeholder`, `achievement.badge`, `ra.trophy` and the optional navigation sound IDs described below.
 - Export **8-bit, non-interlaced PNG**, JPEG or BMP. Prefer PNG with alpha for icons, JPEG for opaque backgrounds. Each file is at most **1 MiB**. Use **640×480 or smaller** for backgrounds, **256×256 or smaller** for icons/placeholders and preferably **160×160 or smaller** for platform icons. Dimensions are read from the image, then checked again against the bytes passed to the decoder.
 - Fallback order for backgrounds is platform-specific → shared Home → existing FrogUI background logic → solid background. The explicit wallpaper and disabling backgrounds take priority over Enhanced art. For icons it is Enhanced → native pack → native system icon → initials. Missing or corrupt files leave ordinary platform navigation usable. The future Settings, cover and badge consumers will decide their own native fallback.
 - Publish a complete package in a new named pack folder, validate its files and select it using Background Theme Pack. Keep the previous package until the replacement is verified. Avoid replacing assets under an active pack in place. Change selections or restart to reload the cache. Explicit wallpaper still takes priority and the background toggle suppresses Enhanced backdrops.

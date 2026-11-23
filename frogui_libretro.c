@@ -36,6 +36,8 @@
 #include "theme_resource.h"
 #include "filelist.h"
 #include "ra_profile.h"
+#include "ra_game.h"
+#include "trophy_resource.h"
 #include "frogui_settings.h"
 #include "theme_profile.h"
 #include "render_theme.h"
@@ -2628,28 +2630,61 @@ static void cache_store(const char *path, uint64_t mtime, int at_root) {
 
 /* Presentation data belongs only to the current scanned listing. Keep it
  * outside DirEntry so neither the on-disk cache nor the launch identity changes. */
-enum { FILELIST_MAX_ENTRIES = 100000, FILELIST_TITLE_BYTES = 512 * 1024 };
+enum { FILELIST_MAX_ENTRIES = 100000, FILELIST_TITLE_BYTES = 512 * 1024,
+       FILELIST_DETAIL_BYTES = 256 * 1024 };
 static uint32_t *filelist_offsets;
 static unsigned filelist_scan_generation;
 static char *filelist_titles;
 static size_t filelist_used, filelist_capacity;
+static uint32_t *filelist_detail_offsets;
+static char *filelist_details;
+static size_t filelist_detail_used, filelist_detail_capacity;
 static bool filelist_allocation_failed;
 
 static void clear_filelist_titles(void) {
     free(filelist_offsets);
     free(filelist_titles);
+    free(filelist_detail_offsets);
+    free(filelist_details);
+    filelist_detail_offsets = NULL;
+    filelist_details = NULL;
+    filelist_detail_used = filelist_detail_capacity = 0;
     filelist_offsets = NULL;
     filelist_titles = NULL;
     filelist_used = filelist_capacity = 0;
     filelist_allocation_failed = false;
 }
 
-static void accept_filelist_title(void *context, const char *filename, const char *title) {
-    (void)context;
-    if (!title[0] || filelist_allocation_failed) return;
-    size_t bytes = strlen(title) + 1;
-    if (bytes > FILELIST_TITLE_BYTES - filelist_used) return;
+static void store_filelist_details(int index, const char *const *details) {
+    if (!details || (filelist_detail_offsets && filelist_detail_offsets[index])) return;
+    size_t bytes = 0;
+    for (int i = 0; i < FILELIST_DETAIL_COUNT; i++) bytes += strlen(details[i]) + 1;
+    if (bytes == FILELIST_DETAIL_COUNT || bytes > FILELIST_DETAIL_BYTES - filelist_detail_used)
+        return;
+    if (!filelist_detail_offsets) {
+        filelist_detail_offsets = calloc((size_t)entry_count, sizeof(*filelist_detail_offsets));
+        if (!filelist_detail_offsets) return;
+    }
+    if (filelist_detail_used + bytes > filelist_detail_capacity) {
+        size_t capacity = filelist_detail_capacity ? filelist_detail_capacity * 2 : 4096;
+        while (capacity < filelist_detail_used + bytes) capacity *= 2;
+        char *grown = realloc(filelist_details, capacity);
+        if (!grown) return;
+        filelist_details = grown;
+        filelist_detail_capacity = capacity;
+    }
+    filelist_detail_offsets[index] = (uint32_t)filelist_detail_used + 1;
+    for (int i = 0; i < FILELIST_DETAIL_COUNT; i++) {
+        size_t length = strlen(details[i]) + 1;
+        memcpy(filelist_details + filelist_detail_used, details[i], length);
+        filelist_detail_used += length;
+    }
+}
 
+static void accept_filelist_title(void *context, const char *filename, const char *title,
+                                  const char *const *details) {
+    (void)context;
+    if (filelist_allocation_failed) return;
     int low = 0, high = entry_count;
     while (low < high) {
         int mid = low + (high - low) / 2;
@@ -2663,6 +2698,10 @@ static void accept_filelist_title(void *context, const char *filename, const cha
            strcmp(entries[low].name, filename)) low++;
     if (low >= entry_count || entries[low].is_dir || strcmp(entries[low].name, filename))
         return;
+    store_filelist_details(low, details);
+    if (!title[0]) return;
+    size_t bytes = strlen(title) + 1;
+    if (bytes > FILELIST_TITLE_BYTES - filelist_used) return;
     if (!filelist_offsets) {
         filelist_offsets = calloc((size_t)entry_count, sizeof(*filelist_offsets));
         if (!filelist_offsets) { filelist_allocation_failed = true; return; }
@@ -3780,9 +3819,13 @@ static void switch_main_tab(int target) {
     }
 }
 
+static const NavCatalog details_ra_catalog;
+
 static void open_enhanced_settings(void) {
     NavModel *navigation = &enhanced_settings_navigation;
-    bool from_details = navigation->state.screen == NAV_GAME_DETAILS;
+    NavScreen previous_screen = navigation->state.screen;
+    bool from_game = previous_screen == NAV_GAME_DETAILS ||
+                     previous_screen == NAV_ACHIEVEMENTS_GALLERY;
     nav_model_init(navigation, 1);
     snprintf(enhanced_settings_directory, sizeof enhanced_settings_directory,
              "%s", current_path);
@@ -3804,7 +3847,7 @@ static void open_enhanced_settings(void) {
                 snprintf(navigation->state.platform_id, NAV_ID_MAX,
                          "%.*s", (int)length, platform);
                 snprintf(navigation->state.game_id, NAV_ID_MAX, "%s", name);
-                navigation->state.screen = from_details ? NAV_GAME_DETAILS : NAV_GAME_LIBRARY;
+                navigation->state.screen = from_game ? previous_screen : NAV_GAME_LIBRARY;
             }
         }
     }
@@ -3832,7 +3875,9 @@ static void restore_settings_listing(void) {
     NavModel *navigation = &enhanced_settings_navigation;
     bool enhanced_return = navigation->state.screen == NAV_SETTINGS;
     if (enhanced_return) {
-        nav_model_handle(navigation, NULL, NAV_INPUT_BACK, NULL);
+        const NavCatalog *catalog = navigation->state.settings_return == NAV_ACHIEVEMENTS_GALLERY
+                                  ? &details_ra_catalog : NULL;
+        nav_model_handle(navigation, catalog, NAV_INPUT_BACK, NULL);
         /* Open Apps can temporarily replace the listing while Settings is open. */
         viewing_apps = false;
         apps_browsing = false;
@@ -3872,7 +3917,8 @@ static void restore_settings_listing(void) {
     }
     save_games_tab_entries();
 
-    bool from_details = navigation->state.screen == NAV_GAME_DETAILS;
+    bool from_details = navigation->state.screen == NAV_GAME_DETAILS ||
+                        navigation->state.screen == NAV_ACHIEVEMENTS_GALLERY;
     if ((!from_details && navigation->state.screen != NAV_GAME_LIBRARY) ||
         platform < 0 || !entries[platform].is_dir) {
         if (from_details) navigation->state.screen = NAV_PLATFORM_HOME;
@@ -4846,6 +4892,11 @@ static bool enhanced_library_view(void) {
 static bool enhanced_details_view(void) {
     return enhanced_library_view() &&
            enhanced_settings_navigation.state.screen == NAV_GAME_DETAILS;
+}
+
+static bool enhanced_achievements_view(void) {
+    return enhanced_library_view() &&
+           enhanced_settings_navigation.state.screen == NAV_ACHIEVEMENTS_GALLERY;
 }
 
 static bool switch_home_view(void) {
@@ -5921,17 +5972,54 @@ static void enhanced_home_utility_icon(uint16_t *fb, enum EnhancedHomeItemKind k
 }
 
 #define RA_SD_DIRECTORY SDCARD_BASE "/cubegm/enhanced/ra"
-enum { RA_AVATAR_EDGE = 40 };
+enum { RA_AVATAR_EDGE = 40, RA_TROPHY_EDGE = 28 };
 static RaProfile ra_home_profile;
 static bool ra_home_profile_valid;
 static uint16_t ra_avatar_pixels[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
 static uint8_t ra_avatar_alpha[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
 static SystemIcon ra_avatar_icon;
+static uint16_t ra_trophy_pixels[RA_TROPHY_EDGE * RA_TROPHY_EDGE];
+static uint8_t ra_trophy_alpha[RA_TROPHY_EDGE * RA_TROPHY_EDGE];
+static SystemIcon ra_trophy_icon;
+
+static void load_ra_trophy(void) {
+    ra_trophy_icon = (SystemIcon){
+        .pixels = ra_trophy_builtin_pixels,
+        .alpha = ra_trophy_builtin_alpha,
+        .width = RA_TROPHY_EDGE,
+        .height = RA_TROPHY_EDGE
+    };
+    if (!enhanced_theme || !settings_graphical_home) return;
+    ThemeResourceDescriptor resource;
+    if (!theme_resource_resolve(enhanced_theme, "ra.trophy", &resource)) return;
+    int width = 0, height = 0;
+    unsigned char *rgba = enhanced_decode_image(&resource, &width, &height, 4);
+    if (!rgba) return;
+    int edge = width > height ? width : height;
+    int w = width * RA_TROPHY_EDGE / edge;
+    int h = height * RA_TROPHY_EDGE / edge;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int source = (y * height / h * width + x * width / w) * 4;
+            unsigned r = rgba[source], g = rgba[source + 1], b = rgba[source + 2];
+            ra_trophy_pixels[y * w + x] =
+                (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            ra_trophy_alpha[y * w + x] = rgba[source + 3];
+        }
+    }
+    stbi_image_free(rgba);
+    ra_trophy_icon = (SystemIcon){
+        .pixels = ra_trophy_pixels, .alpha = ra_trophy_alpha, .width = w, .height = h
+    };
+}
 
 static void load_ra_home(const char *directory) {
     ra_home_profile_valid = ra_profile_read(directory, &ra_home_profile);
     ra_avatar_icon = (SystemIcon){0};
-    if (!ra_home_profile_valid || !ra_home_profile.avatar) return;
+    if (!ra_home_profile_valid) return;
+    if (!ra_home_profile.avatar) return;
     char path[MAX_PATH_LEN];
     int length = snprintf(path, sizeof path, "%s/avatar.png", directory);
     if (length <= 0 || (size_t)length >= sizeof path) return;
@@ -5956,9 +6044,14 @@ static void load_ra_home(const char *directory) {
     ra_avatar_icon.height = h;
 }
 
+static void render_ra_trophy(uint16_t *fb, int x, int y, int size) {
+    if (ra_trophy_icon.pixels)
+        system_icon_draw(fb, &ra_trophy_icon, x, y, size, size);
+}
+
 static void render_ra_home(uint16_t *fb) {
     if (!ra_home_profile_valid) return;
-    int icon = UI_S(34), gap = UI_S(8), trophy = UI_S(14);
+    int icon = UI_S(34), gap = UI_S(8), trophy = UI_S(24);
     int y = UI_S(39), right = SCREEN_WIDTH - UI_S(24);
     int text = font_measure_text(ra_home_profile.username);
     int max_text = SCREEN_WIDTH / 3;
@@ -5976,14 +6069,7 @@ static void render_ra_home(uint16_t *fb) {
 
     int cup = UI_S(24) + gap;
     int top = y + (icon + gap - trophy) / 2;
-    int line = UI_S(2);
-    render_rounded_rect(fb, cup + line, top, trophy - line * 2,
-                        trophy * 2 / 3, line, COLOR_TEXT);
-    render_fill_rect(fb, cup, top + line, trophy, line, COLOR_TEXT);
-    render_fill_rect(fb, cup + (trophy - line) / 2, top + trophy / 2,
-                     line, trophy / 2, COLOR_TEXT);
-    render_fill_rect(fb, cup + line, top + trophy - line,
-                     trophy - line * 2, line, COLOR_TEXT);
+    render_ra_trophy(fb, cup, top, trophy);
     int count_x = cup + trophy + gap;
     int ty = y + (icon + gap - font_get_size()) / 2;
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, count_x, ty,
@@ -6291,7 +6377,7 @@ static int coverflow_neighbors(void) {
 }
 
 static bool coverflow_animating(void) {
-    return enhanced_library_view() && !enhanced_details_view() &&
+    return enhanced_library_view() && !enhanced_details_view() && !enhanced_achievements_view() &&
            coverflow_frame < SYSTEM_CAROUSEL_FRAMES;
 }
 
@@ -6312,7 +6398,7 @@ static void prepare_enhanced_library(bool theme_changed) {
     if (selected_index < 0) selected_index = 0;
     if (selected_index >= entry_count) selected_index = entry_count - 1;
 
-    bool motion = enhanced_home_motion_enabled() && !enhanced_details_view();
+    bool motion = enhanced_home_motion_enabled() && !enhanced_details_view() && !enhanced_achievements_view();
     bool moving = coverflow_target >= 0 && coverflow_target != selected_index && motion;
     if (coverflow_target != selected_index || coverflow_title_generation != filelist_scan_generation) {
         prepare_coverflow_title(&entries[selected_index]);
@@ -6462,15 +6548,244 @@ static void render_details_chevron(uint16_t *fb, int x, int direction) {
     }
 }
 
-static void render_enhanced_game_details(uint16_t *fb) {
-    if (selected_index < 0 || selected_index >= entry_count) return;
+static int details_recent_rank(int index) {
+    char path[sizeof ((RecentGame *)0)->full_path];
+    int written = snprintf(path, sizeof path, "%s/%s", current_path, entries[index].name);
+    if (written < 0 || (size_t)written >= sizeof path) return -1;
+    const RecentGame *recent = recent_games_get_list();
+    for (int i = 0; i < recent_games_get_count(); i++)
+        if (strcmp(path, recent[i].full_path) == 0) return i;
+    return -1;
+}
+
+static void render_details_text(uint16_t *fb, const char *text, int x, int y,
+                                int width, int height, uint16_t color) {
+    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, x, y, text,
+                           color, x, y, width, height);
+}
+
+static void render_details_description(uint16_t *fb, const char *description,
+                                       int x, int y, int width, int step, int bottom) {
+    char line[RA_GAME_DESCRIPTION_MAX + 1];
+    while (*description && y + step <= bottom) {
+        size_t length = 0, space = 0;
+        for (size_t end = 0; description[end];) {
+            do { end++; } while (((unsigned char)description[end] & 0xc0) == 0x80);
+            if (end >= sizeof line) break;
+            snprintf(line, sizeof line, "%.*s", (int)end, description);
+            if (font_measure_text(line) > width) break;
+            if (description[end] == ' ') space = end;
+            length = end;
+        }
+        if (!length) break;
+        if (description[length] && space) length = space;
+        snprintf(line, sizeof line, "%.*s", (int)length, description);
+        if (y + 2 * step > bottom && description[length]) {
+            while (length) {
+                snprintf(line, sizeof line, "%.*s...", (int)length, description);
+                if (font_measure_text(line) <= width) break;
+                do { length--; } while (((unsigned char)description[length] & 0xc0) == 0x80);
+            }
+            if (!length) break;
+        }
+        render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
+        description += length;
+        while (*description == ' ') description++;
+        y += step;
+    }
+}
+
+static void render_details_information(uint16_t *fb, int index, int y) {
+    const int x = SCREEN_WIDTH * 44 / 100;
+    const int width = SCREEN_WIDTH - x - UI_S(30);
+    const int step = font_get_size() + UI_S(5);
+    const int bottom = SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(34);
+    char line[FILELIST_MAX_FIELD + 84];
+    int recent = details_recent_rank(index);
+    if (recent >= 0) {
+        const char *status = recent == 0 ? tr_or("enhanced.details.last_played", "Last played")
+                                         : tr_or("enhanced.details.in_recents", "In Recents");
+        render_details_text(fb, status, x, y, width, step, COLOR_HEADER);
+        y += step;
+    }
+
+    snprintf(line, sizeof line, "%s: %s", tr_or("enhanced.details.rom", "ROM"),
+             entries[index].name);
+    render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
+    y += step;
+    uint32_t offset = filelist_detail_offsets ? filelist_detail_offsets[index] : 0;
+    if (!offset) return;
+
+    const char *labels[FILELIST_DESCRIPTION] = {
+        tr_or("enhanced.details.original_title", "Original title"),
+        tr_or("enhanced.details.release_date", "Release date"),
+        tr_or("enhanced.details.developer", "Developer"),
+        tr_or("enhanced.details.publisher", "Publisher"),
+        tr_or("enhanced.details.genre", "Genre"),
+        tr_or("enhanced.details.players", "Players")
+    };
+    const char *value = filelist_details + offset - 1;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) {
+        if (*value && y + step <= bottom) {
+            snprintf(line, sizeof line, "%s: %s", labels[i], value);
+            render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
+            y += step;
+        }
+        value += strlen(value) + 1;
+    }
+    if (*value && y + 2 * step <= bottom) {
+        y += UI_S(5);
+        render_details_text(fb, tr_or("enhanced.details.description", "Description"),
+                            x, y, width, step, COLOR_HEADER);
+        render_details_description(fb, value, x, y + step, width, step, bottom);
+    }
+}
+
+static RaGame details_achievements;
+static bool details_achievements_valid;
+static size_t details_achievement_index;
+static unsigned details_achievement_generation;
+static int details_achievement_game = -1;
+static char details_achievement_path[sizeof current_path + sizeof entries[0].name];
+
+static bool details_identity_matches(void *context, const char *platform) {
+    (void)context;
+    return strcmp(platform, enhanced_settings_navigation.state.platform_id) == 0;
+}
+
+static bool details_game_matches(void *context, const char *platform, const char *game) {
+    return details_identity_matches(context, platform) &&
+           strcmp(game, enhanced_settings_navigation.state.game_id) == 0;
+}
+
+static bool details_ra_set_available(void *context, const char *platform, const char *game) {
+    return details_achievements_valid && details_game_matches(context, platform, game);
+}
+
+static const NavCatalog details_ra_catalog = {
+    .platform_exists = details_identity_matches,
+    .game_exists = details_game_matches,
+    .ra_set_valid = details_ra_set_available
+};
+
+static void prepare_details_achievements(const char *sd_root) {
+    if (!enhanced_details_view() && !enhanced_achievements_view()) {
+        if (!settings_menu_active) {
+            details_achievement_game = -1;
+            details_achievements_valid = false;
+        }
+        return;
+    }
+    if (selected_index == details_achievement_game &&
+        filelist_scan_generation == details_achievement_generation) return;
+    details_achievement_game = selected_index;
+    details_achievement_generation = filelist_scan_generation;
+    int previous = details_achievements_valid
+                 ? details_achievements.achievements[details_achievement_index].id : 0;
+    details_achievement_index = 0;
+    details_achievements_valid = false;
+    if (selected_index >= 0 && selected_index < entry_count && !entries[selected_index].is_dir) {
+        char path[sizeof current_path + sizeof entries[0].name];
+        int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[selected_index].name);
+        if (n > 0 && (size_t)n < sizeof path) {
+            bool same_game = strcmp(path, details_achievement_path) == 0;
+            snprintf(details_achievement_path, sizeof details_achievement_path, "%s", path);
+            details_achievements_valid = ra_game_read(sd_root, path,
+                enhanced_settings_navigation.state.platform_id, &details_achievements);
+            if (same_game && previous && details_achievements_valid) {
+                for (size_t i = 0; i < details_achievements.achievement_count; i++) {
+                    if (details_achievements.achievements[i].id == previous) {
+                        details_achievement_index = i;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (!details_achievements_valid && enhanced_achievements_view())
+        nav_model_handle(&enhanced_settings_navigation, NULL, NAV_INPUT_BACK, NULL);
+}
+
+static Thumbnail details_badge;
+static size_t details_badge_index = (size_t)-1;
+static unsigned details_badge_generation;
+static int details_badge_game = -1;
+
+static void prepare_details_badge(void) {
+    if (!enhanced_achievements_view() || !details_achievements_valid) {
+        if (!settings_menu_active) {
+            free_thumbnail(&details_badge);
+            details_badge_game = -1;
+        }
+        return;
+    }
+    if (details_badge_game == details_achievement_game &&
+        details_badge_generation == details_achievement_generation &&
+        details_badge_index == details_achievement_index) return;
+    free_thumbnail(&details_badge);
+    details_badge_game = details_achievement_game;
+    details_badge_generation = details_achievement_generation;
+    details_badge_index = details_achievement_index;
+
+    const char *badge = details_achievements.achievements[details_achievement_index].badge;
+    static const char safe[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+    size_t length = strlen(badge);
+    if (length && length <= 60 && strspn(badge, safe) == length) {
+        char path[sizeof RA_SD_DIRECTORY + 80];
+        snprintf(path, sizeof path, "%s/badges/%s.png", RA_SD_DIRECTORY, badge);
+        load_bounded_png_thumbnail(path, &details_badge);
+    }
+}
+
+static void render_details_header(uint16_t *fb, const char *title) {
     render_header(fb, "");
     int baseline, cap_height;
     font_cap_metrics(&baseline, &cap_height);
     int title_y = HEADER_HEIGHT / 2 - (baseline - cap_height / 2);
     font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, CONTENT_X, title_y,
-                           details_title_text, COLOR_HEADER, CONTENT_X, 0,
+                           title, COLOR_HEADER, CONTENT_X, 0,
                            SCREEN_WIDTH - CONTENT_X - UI_S(80), HEADER_HEIGHT);
+
+}
+
+static void render_enhanced_achievements(uint16_t *fb) {
+    render_details_header(fb, tr_or("enhanced.details.achievement_title", "RetroAchievements"));
+    if (!details_achievements_valid || details_achievement_index >= details_achievements.achievement_count)
+        return;
+    const RaGameAchievement *achievement = &details_achievements.achievements[details_achievement_index];
+    const int x = UI_S(32), label_x = x + UI_S(80);
+    const int width = SCREEN_WIDTH - 2 * x, label_width = SCREEN_WIDTH - label_x - x;
+    const int step = font_get_size() + UI_S(6);
+    int y = HEADER_HEIGHT + UI_S(20);
+    render_details_text(fb, details_title_text, x, y, width, step, COLOR_HEADER);
+    y += step + UI_S(12);
+    char label[64];
+    snprintf(label, sizeof label, "%zu / %zu", details_achievement_index + 1,
+             details_achievements.achievement_count);
+    if (details_badge.data)
+        render_thumbnail_contained(fb, &details_badge, x, y, UI_S(64), UI_S(64));
+    else
+        render_ra_trophy(fb, x, y, UI_S(48));
+    render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
+    y += step;
+    render_details_text(fb, achievement->title, label_x, y, label_width, step, COLOR_TEXT);
+    y += step;
+    snprintf(label, sizeof label, "%s: %d",
+             tr_or("enhanced.details.achievement_points", "Points"), achievement->points);
+    render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
+    y += step + UI_S(8);
+    render_details_description(fb, achievement->description, x, y, width, step,
+                               SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(26));
+    const char *hint = details_achievements.achievement_count > 1
+                     ? tr_or("enhanced.details.achievement_controls", "Up/Down  Browse    B  Back")
+                     : tr_or("enhanced.details.achievement_back", "B  Back");
+    render_details_text(fb, hint, x, SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5),
+                        width, step, COLOR_LEGEND);
+}
+
+static void render_enhanced_game_details(uint16_t *fb) {
+    if (selected_index < 0 || selected_index >= entry_count) return;
+    render_details_header(fb, details_title_text);
 
     const Thumbnail *cover = NULL;
     if (selected_index >= coverflow_first && selected_index < coverflow_last)
@@ -6513,10 +6828,20 @@ static void render_enhanced_game_details(uint16_t *fb) {
         render_fill_rect(fb, center - line, y + height * 3 / 4,
                          line * 2, UI_S(2), COLOR_TEXT);
     }
+    if (details_cover_transition_frame == SYSTEM_CAROUSEL_FRAMES)
+        render_details_information(fb, selected_index, target_y);
     if (details_playable_neighbor(selected_index, -1) >= 0)
         render_details_chevron(fb, UI_S(14), -1);
     if (details_playable_neighbor(selected_index, 1) >= 0)
         render_details_chevron(fb, SCREEN_WIDTH - UI_S(14), 1);
+    if (details_achievements_valid) {
+        const char *gallery = tr_or("enhanced.details.achievements_hint", "L2  Achievements");
+        int glyph = UI_S(22);
+        int label = SCREEN_WIDTH - UI_S(24) - font_measure_text(gallery);
+        int footer = SCREEN_HEIGHT - ITEM_HEIGHT - font_get_size() - UI_S(14);
+        render_ra_trophy(fb, label - glyph - UI_S(5), footer, glyph);
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, label, footer, gallery, COLOR_LEGEND);
+    }
     const char *hint = tr_or("enhanced.details.play_back", "A  Play    B  Back");
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
                    (SCREEN_WIDTH - font_measure_text(hint)) / 2,
@@ -6636,6 +6961,21 @@ static void launch_by_path(const char *path);
 static void handle_input(void) {
     input_update();
 
+    if (enhanced_achievements_view()) {
+        if (input_was_pressed(FROG_BTN_START)) {
+            open_enhanced_settings();
+        } else if (input_was_pressed(FROG_BTN_B) || input_was_pressed(FROG_BTN_L2)) {
+            nav_model_handle(&enhanced_settings_navigation, &details_ra_catalog,
+                             NAV_INPUT_BACK, NULL);
+        } else if (input_repeat(FROG_BTN_UP)) {
+            if (details_achievement_index > 0) details_achievement_index--;
+        } else if (input_repeat(FROG_BTN_DOWN)) {
+            if (details_achievement_index + 1 < details_achievements.achievement_count)
+                details_achievement_index++;
+        }
+        return;
+    }
+
     if (enhanced_details_view()) {
         NavModel *nav = &enhanced_settings_navigation;
         NavEffect effect;
@@ -6643,6 +6983,8 @@ static void handle_input(void) {
             open_enhanced_settings();
         } else if (input_was_pressed(FROG_BTN_B)) {
             nav_model_handle(nav, NULL, NAV_INPUT_BACK, &effect);
+        } else if (input_was_pressed(FROG_BTN_L2)) {
+            nav_model_handle(nav, &details_ra_catalog, NAV_INPUT_GALLERY, &effect);
         } else if (input_was_pressed(FROG_BTN_LEFT) ||
                    input_was_pressed(FROG_BTN_RIGHT)) {
             int direction = input_was_pressed(FROG_BTN_LEFT) ? -1 : 1;
@@ -7582,6 +7924,7 @@ static void render_port_migration(const PortMigration *port, int index,
 void retro_init(void) {
     dbg("retro_init start");
     load_ra_home(RA_SD_DIRECTORY);
+    load_ra_trophy();
     nav_model_init(&enhanced_settings_navigation, 0);
     ui_sounds_ready = false;
     ui_sound_next_ms = 0;
@@ -7742,7 +8085,11 @@ bool retro_load_game(const struct retro_game_info *info) {
     return true;  /* supports no-game */
 }
 
-void retro_unload_game(void) {}
+void retro_unload_game(void) {
+    free_thumbnail(&details_badge);
+    details_badge_game = -1;
+    details_achievement_game = -1;
+    details_achievements_valid = false;}
 
 static void render_settings_menu(void) {
     extern const Theme themes[];
@@ -8202,8 +8549,11 @@ void retro_run(void) {
     old_path[sizeof old_path - 1] = '\0';
     handle_input();
     bool enhanced_theme_changed = enhanced_theme_sync();
+    if (enhanced_theme_changed) load_ra_trophy();
     prepare_enhanced_grid();
     prepare_enhanced_library(enhanced_theme_changed);
+    prepare_details_achievements(SDCARD_BASE);
+    prepare_details_badge();
     RenderThemeScreen theme_screen = (settings_menu_active || viewing_info) ? RENDER_SCREEN_SETTINGS :
         viewing_recents ? RENDER_SCREEN_RECENTS :
         (viewing_apps || apps_browsing || viewing_activity) ? RENDER_SCREEN_APPS :
@@ -8497,6 +8847,8 @@ void retro_run(void) {
             sig = sig*33u + (unsigned)(viewing_recents*16 + viewing_favourites*8 + viewing_apps*4 + apps_browsing*2 + viewing_activity + viewing_search*32);
             sig = sig*33u + (unsigned)viewing_info;
             sig = sig*33u + (unsigned)enhanced_details_view();
+            sig = sig*33u + (unsigned)enhanced_achievements_view();
+            if (enhanced_achievements_view()) sig = sig*33u + (unsigned)details_achievement_index;
             if (enhanced_library_view())
                 sig = sig*33u + filelist_scan_generation;
             sig = sig*33u + (unsigned)game_switcher_fullscreen;
@@ -8566,6 +8918,8 @@ void retro_run(void) {
                 render_enhanced_home(framebuffer);
             else
                 render_system_grid(framebuffer);
+        } else if (enhanced_achievements_view()) {
+            render_enhanced_achievements(framebuffer);
         } else if (enhanced_details_view()) {
             render_enhanced_game_details(framebuffer);
         } else if (enhanced_library_view()) {

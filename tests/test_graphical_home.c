@@ -93,12 +93,22 @@ int __wrap_access(const char *path, int mode) {
     return __real_access(path, mode);
 }
 
+static long input_fixture_ms = 1000;
+
+int __wrap_gettimeofday(struct timeval *time, void *zone) {
+    (void)zone;
+    time->tv_sec = input_fixture_ms / 1000;
+    time->tv_usec = (input_fixture_ms % 1000) * 1000;
+    return 0;
+}
+
 static void press(FrogButton button) {
+    input_fixture_ms += 100;
     input_set_ext_raw(1u << input_get_raw_bit(button));
     handle_input();
     /* Face buttons require a stable hold in the real input layer. */
     if (button == FROG_BTN_A || button == FROG_BTN_B) {
-        usleep(80000);
+        input_fixture_ms += 80;
         handle_input();
     }
     input_set_ext_raw(0);
@@ -920,6 +930,8 @@ static void test_ra_home(const char *root) {
     assert(unlink(profile) == 0 && unlink(avatar) == 0);
     uint16_t *frame = calloc(640 * 480, sizeof(*frame));
     assert(frame);
+    load_ra_trophy();
+    assert(ra_trophy_icon.pixels && ra_trophy_icon.alpha[0] == 0);
     for (int i = 0; i < 4; i++) render_ra_home(frame);
     size_t painted = 0;
     bool left_pill = false, right_pill = false, central_gap_clear = true;
@@ -956,6 +968,45 @@ static void test_ra_home(const char *root) {
     load_ra_home(directory);
     assert(!ra_home_profile_valid);
     puts("PASS offline RA identity, avatar validation, snapshot drawing, and unsupported data");
+}
+
+static void ra_game_fixture(const char *root, bool create) {
+    static const char *directories[] = {
+        "cubegm", "cubegm/enhanced", "cubegm/enhanced/ra", "cubegm/enhanced/ra/cache",
+        "cubegm/enhanced/ra/cache/7",
+        "cubegm/enhanced/ra/cache/7/0123456789abcdef0123456789abcdef"
+    };
+    char path[1024];
+    if (!create) {
+        snprintf(path, sizeof path, "%s/%s/gamepack.json", root, directories[5]);
+        assert(unlink(path) == 0);
+        snprintf(path, sizeof path, "%s/cubegm/enhanced/ra/rom_identity.json", root);
+        assert(unlink(path) == 0);
+        for (size_t i = sizeof directories / sizeof directories[0]; i > 0; i--) {
+            snprintf(path, sizeof path, "%s/%s", root, directories[i - 1]);
+            assert(rmdir(path) == 0);
+        }
+        return;
+    }
+    for (size_t i = 0; i < sizeof directories / sizeof directories[0]; i++) {
+        assert(snprintf(path, sizeof path, "%s/%s", root, directories[i]) < (int)sizeof path);
+        assert(mkdir(path, 0700) == 0);
+    }
+    assert(snprintf(path, sizeof path, "%s/cubegm/enhanced/ra/rom_identity.json", root) <
+           (int)sizeof path);
+    write_fixture(path,
+        "{\"Other/Rom.NES\":{\"size\":1,\"metadata_only\":true},"
+        "\"NoArtwork/Example.nes\":{\"platform\":\"NoArtwork\",\"console_id\":7,"
+        "\"game_id\":40,\"ra_hash\":\"0123456789abcdef0123456789abcdef\","
+        "\"method\":\"rcheevos_compatible\",\"size\":0,\"mtime_ns\":1795000000000000000,"
+        "\"metadata_only\":true}}");
+    assert(snprintf(path, sizeof path, "%s/%s/gamepack.json", root, directories[5]) <
+           (int)sizeof path);
+    write_fixture(path,
+        "{\"schema_version\":1,\"console_id\":7,\"game_id\":40,"
+        "\"ra_hash\":\"0123456789abcdef0123456789abcdef\",\"metadata_only\":true,"
+        "\"achievements\":[{\"id\":1,\"title\":\"First step\",\"points\":5},"
+        "{\"id\":2,\"title\":\"Second step\",\"description\":\"Explore the cave\",\"points\":10}]}");
 }
 
 int main(int argc, char **argv) {
@@ -1009,7 +1060,12 @@ int main(int argc, char **argv) {
     write_fixture(second_rom, "");
     char launch_csv[MAX_PATH_LEN];
     assert(snprintf(launch_csv, sizeof launch_csv, "%s/filelist.csv", collection) < (int)sizeof launch_csv);
-    write_fixture(launch_csv, "Example.nes,Custom Launch Title,\n");
+    write_fixture(launch_csv,
+                  "Rom.ext,Display Title,ChineseTitle,Original Title,Release Date,"
+                  "Developer,Publisher,Genre,Players,Description\n"
+                  "Example.nes,Custom Launch Title,,Example Original,1994,Studio,"
+                  "Publisher,Platformer,2,\"A game with a comma, and a long description.\"\n"
+                  "Second.nes,,,Second Original,,,,,,\n");
     settings_file_cache = 0;
     scan_directory(ROMS_PATH);
     assert(entry_count == 2 && entries[0].is_dir && entries[1].is_dir);
@@ -1044,6 +1100,15 @@ int main(int argc, char **argv) {
     assert(enhanced_details_view() && access(test_launch, F_OK) != 0);
     check_csv_title("Example.nes", "Custom Launch Title");
     assert(strcmp(details_title_text, "Custom Launch Title") == 0);
+    uint32_t details_offset = filelist_detail_offsets[selected_index];
+    assert(details_offset);
+    const char *original_title = filelist_details + details_offset - 1;
+    assert(strcmp(original_title, "Example Original") == 0);
+    assert(strcmp(original_title + strlen(original_title) + 1, "1994") == 0);
+    const char *field = original_title;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) field += strlen(field) + 1;
+    assert(strcmp(field, "A game with a comma, and a long description.") == 0);
+    assert(details_recent_rank(selected_index) == -1);
     assert(details_cover_transition_frame == 0);
     uint16_t *details_frame = calloc((size_t)SCREEN_WIDTH * SCREEN_HEIGHT, sizeof *details_frame);
     assert(details_frame);
@@ -1080,6 +1145,8 @@ int main(int argc, char **argv) {
     assert(selected_index == 1 && strcmp(enhanced_settings_navigation.state.game_id, "Second.nes") == 0);
     prepare_enhanced_library(false);
     assert(strcmp(details_title_text, "Second") == 0);
+    assert(filelist_detail_offsets[1]);
+    assert(!strcmp(filelist_details + filelist_detail_offsets[1] - 1, "Second Original"));
     memset(details_frame, 0, (size_t)SCREEN_WIDTH * SCREEN_HEIGHT * sizeof *details_frame);
     render_enhanced_game_details(details_frame);
     assert(details_frame[arrow_row + UI_S(14) - UI_S(6)] == COLOR_TEXT);
@@ -1092,6 +1159,28 @@ int main(int argc, char **argv) {
     press(FROG_BTN_LEFT);
     assert(enhanced_details_view() && selected_index == 0);
     assert(strcmp(enhanced_settings_navigation.state.game_id, "Example.nes") == 0);
+    prepare_details_achievements(ROMS_PATH);
+    assert(!details_achievements_valid);
+    press(FROG_BTN_L2);
+    assert(enhanced_details_view());
+    ra_game_fixture(ROMS_PATH, true);
+    details_achievement_game = -1;
+    prepare_details_achievements(ROMS_PATH);
+    assert(details_achievements_valid && details_achievements.achievement_count == 2);
+    press(FROG_BTN_L2);
+    assert(enhanced_achievements_view());
+    render_enhanced_achievements(details_frame);
+    press(FROG_BTN_DOWN);
+    assert(details_achievement_index == 1);
+    press(FROG_BTN_START);
+    assert(settings_menu_active &&
+           enhanced_settings_navigation.state.settings_return == NAV_ACHIEVEMENTS_GALLERY);
+    press(FROG_BTN_B);
+    prepare_details_achievements(ROMS_PATH);
+    assert(enhanced_achievements_view() && details_achievement_index == 1);
+    press(FROG_BTN_B);
+    assert(enhanced_details_view() && selected_index == 0);
+    ra_game_fixture(ROMS_PATH, false);
     free(details_frame);
     press(FROG_BTN_START);
     assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_GAME_DETAILS);
@@ -1116,6 +1205,8 @@ int main(int argc, char **argv) {
     assert(strcmp(core_line, CORES_PATH "/quicknes_libretro.so\n") == 0);
     rom_line[strcspn(rom_line, "\n")] = 0;
     assert(strcmp(rom_line, rom) == 0);
+    assert(details_recent_rank(selected_index) == 0);
+    assert(details_recent_rank(1) == -1);
     press(FROG_BTN_B);
     assert(strcmp(current_path, ROMS_PATH) == 0 && icon_system_view());
     assert(strcmp(entries[selected_index].name, "NoArtwork") == 0);

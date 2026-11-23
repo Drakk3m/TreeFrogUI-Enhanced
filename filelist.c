@@ -8,8 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* Three fields of maximum size with every byte represented as "" plus syntax. */
-#define ROW_BYTES (6 * FILELIST_MAX_FIELD + 12)
+/* Every byte may be represented as an escaped quote. */
+#define ROW_BYTES ((3 + FILELIST_DETAIL_COUNT) * (2 * FILELIST_MAX_FIELD + 3) + 5)
 
 static bool utf8_field(const char *field) {
     const unsigned char *p = (const unsigned char *)field;
@@ -54,7 +54,8 @@ static bool read_field(const char **cursor, char output[FILELIST_MAX_FIELD + 1])
     return true;
 }
 
-static void read_row(char *row, size_t bytes, bool first, filelist_accept_fn accept, void *context) {
+static void read_row(char *row, size_t bytes, bool first, bool *extended,
+                     filelist_accept_fn accept, void *context) {
     if (bytes && row[bytes - 1] == '\r') bytes--;
     row[bytes] = 0;
     const char *p = row;
@@ -65,14 +66,45 @@ static void read_row(char *row, size_t bytes, bool first, filelist_accept_fn acc
     p++;
     if (!read_field(&p, title) || *p != ',') return;
     p++;
-    if (!read_field(&p, third) || *p) return;
+    if (!read_field(&p, third)) return;
+    bool header = first && !strcmp(filename, "Rom.ext") &&
+                  !strcmp(title, "Display Title") && !strcmp(third, "ChineseTitle");
+    if (!*p) {
+        if (header) return;
+    } else if (!header && !*extended) {
+        return;
+    }
 
-    if (first && !strcmp(filename, "Rom.ext") && !strcmp(title, "Display Title") &&
-        !strcmp(third, "ChineseTitle")) return;
     if (!filename[0] || !strcmp(filename, ".") || !strcmp(filename, "..") ||
         strpbrk(filename, "/\\:") || !utf8_field(filename) ||
         !utf8_field(title) || !utf8_field(third)) return;
-    accept(context, filename, title);
+
+    static const char *const names[FILELIST_DETAIL_COUNT] = {
+        "Original Title", "Release Date", "Developer", "Publisher",
+        "Genre", "Players", "Description"
+    };
+    char values[FILELIST_DETAIL_COUNT][FILELIST_MAX_FIELD + 1];
+    const char *details[FILELIST_DETAIL_COUNT];
+    for (int i = 0; i < FILELIST_DETAIL_COUNT; i++) {
+        details[i] = "";
+        if (!*p) {
+            if (header) return;
+            continue;
+        }
+        p++;
+        bool valid = read_field(&p, values[i]) && utf8_field(values[i]);
+        if (!valid) {
+            if (!header) accept(context, filename, title, NULL);
+            return;
+        }
+        if (header && strcmp(values[i], names[i])) return;
+        details[i] = values[i];
+    }
+    if (header) {
+        *extended = !*p;
+        return;
+    }
+    accept(context, filename, title, *p ? NULL : details);
 }
 
 bool filelist_read(const char *path, filelist_accept_fn accept, void *context) {
@@ -89,12 +121,12 @@ bool filelist_read(const char *path, filelist_accept_fn accept, void *context) {
 
     char row[ROW_BYTES];
     size_t total = 0, used = 0;
-    bool first = true, invalid = false;
+    bool first = true, invalid = false, extended = false;
     int ch;
     while ((ch = fgetc(file)) != EOF) {
         if (++total > FILELIST_MAX_BYTES) break;
         if (ch == '\n') {
-            if (!invalid) read_row(row, used, first, accept, context);
+            if (!invalid) read_row(row, used, first, &extended, accept, context);
             first = false;
             invalid = false;
             used = 0;
@@ -105,7 +137,7 @@ bool filelist_read(const char *path, filelist_accept_fn accept, void *context) {
         }
     }
     bool complete = ch == EOF && !ferror(file) && total == (size_t)info.st_size;
-    if (complete && !invalid && used) read_row(row, used, first, accept, context);
+    if (complete && !invalid && used) read_row(row, used, first, &extended, accept, context);
     if (fclose(file) != 0) complete = false;
     return complete;
 }
