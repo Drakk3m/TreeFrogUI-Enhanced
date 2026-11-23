@@ -787,6 +787,118 @@ static void test_home_ribbon_presentation(void) {
     puts("PASS Home utility selection presents a frame even at a settled scroll offset");
 }
 
+static void check_csv_title(const char *filename, const char *title) {
+    int index = visible_entry_named(filename);
+    assert(index >= 0);
+    selected_index = index;
+    prepare_enhanced_library(false);
+    assert(!strcmp(coverflow_title_text, title));
+}
+
+static void test_platform_filelists(const char *root) {
+    char platform[MAX_PATH_LEN], csv[MAX_PATH_LEN], nested[MAX_PATH_LEN], path[MAX_PATH_LEN];
+    assert(snprintf(platform, sizeof platform, "%s/Filelist", root) < (int)sizeof platform);
+    assert(mkdir(platform, 0700) == 0);
+    assert(snprintf(nested, sizeof nested, "%s/sub", platform) < (int)sizeof nested);
+    assert(mkdir(nested, 0700) == 0);
+    assert(snprintf(csv, sizeof csv, "%s/filelist.csv", platform) < (int)sizeof csv);
+    const char *games[] = {"A, Game.nes", "Empty.nes", "Plain.nes", "Bad.nes", "Large.nes", "Quotes.nes"};
+    for (size_t i = 0; i < sizeof games / sizeof games[0]; i++) {
+        assert(snprintf(path, sizeof path, "%s/%s", platform, games[i]) < (int)sizeof path);
+        write_fixture(path, "");
+    }
+    assert(snprintf(path, sizeof path, "%s/Plain.nes", nested) < (int)sizeof path);
+    write_fixture(path, "");
+    settings_graphical_home = 1;
+    settings_hide_extensions = 0;
+    settings_file_cache = 0;
+    strcpy(current_path, platform);
+    scan_directory(current_path);
+    int discovered = entry_count;
+    check_csv_title("A, Game.nes", "A, Game");
+    write_fixture(csv, "");
+    scan_directory(current_path);
+    check_csv_title("A, Game.nes", "A, Game");
+    write_fixture(csv, "Rom.ext,Display Title,ChineseTitle\n");
+    scan_directory(current_path);
+    check_csv_title("A, Game.nes", "A, Game");
+    FILE *file = fopen(csv, "wb");
+    assert(file);
+    fputs("\xef\xbb\xbfRom.ext,Display Title,ChineseTitle\r\n"
+          "\"A, Game.nes\",\"Pokémon, edición\",\r\n"
+          "\"A, Game.nes\",Duplicate,\r\n"
+          "Empty.nes,,\r\n"
+          "Missing.nes,Phantom,\r\n"
+          "sub/Plain.nes,Nested,\r\n"
+          "Bad.nes,\xff,\r\n"
+          "Large.nes,", file);
+    for (int i = 0; i < 300; i++) fputc('Z', file);
+    fputs(",\r\n"
+          "Plain.nes,\"unclosed\r\n"
+          "Quotes.nes,\"The \"\"Game\"\"\",\r\n", file);
+    assert(fclose(file) == 0);
+    scan_directory(current_path);
+    assert(entry_count == discovered && visible_entry_named("Missing.nes") < 0);
+    check_csv_title("A, Game.nes", "Pokémon, edición");
+    check_csv_title("Empty.nes", "Empty");
+    check_csv_title("Plain.nes", "Plain");
+    check_csv_title("Bad.nes", "Bad");
+    check_csv_title("Large.nes", "Large");
+    check_csv_title("Quotes.nes", "The \"Game\"");
+    strcpy(current_path, nested);
+    scan_directory(current_path);
+    check_csv_title("Plain.nes", "Plain");
+
+    assert(snprintf(path, sizeof path, "%s/AFirst/filelist.csv", root) < (int)sizeof path);
+    write_fixture(path, "First.nes,Independent,\n");
+    assert(snprintf(current_path, sizeof current_path, "%s/AFirst", root) < (int)sizeof current_path);
+    scan_directory(current_path);
+    check_csv_title("First.nes", "Independent");
+    const Thumbnail *art = coverflow_images[selected_index - coverflow_first];
+    assert(art && art->data[0] == 0xf81f); /* The native First.rgb565, not the title. */
+    settings_file_cache = 1;
+    scan_directory(current_path);
+    write_fixture(path, "First.nes,Retitled,\n");
+    scan_directory(current_path);
+    check_csv_title("First.nes", "Retitled");
+    settings_file_cache = 0;
+    settings_graphical_home = 0;
+    scan_directory(current_path);
+    assert(!filelist_offsets && !strcmp(entries[0].name, "First.nes"));
+
+    settings_graphical_home = 1;
+    strcpy(current_path, platform);
+    for (int i = 0; i < 1500; i++) {
+        assert(snprintf(path, sizeof path, "%s/Item%04d.nes", platform, i) < (int)sizeof path);
+        write_fixture(path, "");
+    }
+    assert(unlink(csv) == 0);
+    long long start = monotonic_ms();
+    scan_directory(current_path);
+    long long without = monotonic_ms() - start;
+    assert(entry_count == discovered + 1500);
+    file = fopen(csv, "wb");
+    assert(file);
+    for (int i = 0; i < 1500; i++) fprintf(file, "Item%04d.nes,Title %04d,\n", i, i);
+    assert(fclose(file) == 0);
+    start = monotonic_ms();
+    scan_directory(current_path);
+    long long with = monotonic_ms() - start;
+    check_csv_title("Item1499.nes", "Title 1499");
+    printf("Filelist fixture: 1500 mapped ROMs, %zu bytes retained, scans %lld ms without / %lld ms with CSV\n",
+           filelist_capacity + (size_t)entry_count * sizeof(*filelist_offsets), without, with);
+    file = fopen(csv, "wb");
+    assert(file && ftruncate(fileno(file), 1024 * 1024 + 1) == 0);
+    assert(fclose(file) == 0);
+    scan_directory(current_path);
+    check_csv_title("Item1499.nes", "Item1499");
+    strcpy(current_path, ROMS_PATH);
+    scan_directory(current_path);
+    prepare_enhanced_library(false);
+    assert(!filelist_offsets && !filelist_titles);
+    puts("PASS per-platform CSV scanner, title resolution, fallback and resource limits");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
@@ -834,6 +946,9 @@ int main(int argc, char **argv) {
     write_fixture(first_rom, "");
     assert(mkdir(collection, 0700) == 0);
     write_fixture(rom, "");
+    char launch_csv[MAX_PATH_LEN];
+    assert(snprintf(launch_csv, sizeof launch_csv, "%s/filelist.csv", collection) < (int)sizeof launch_csv);
+    write_fixture(launch_csv, "Example.nes,Custom Launch Title,\n");
     settings_file_cache = 0;
     scan_directory(ROMS_PATH);
     assert(entry_count == 2 && entries[0].is_dir && entries[1].is_dir);
@@ -852,6 +967,7 @@ int main(int argc, char **argv) {
     assert(strcmp(current_path, collection) == 0);
     assert(entry_count == 1 && strcmp(entries[0].name, "Example.nes") == 0);
     assert(!icon_system_view());
+    check_csv_title("Example.nes", "Custom Launch Title");
     press(FROG_BTN_START);
     assert(settings_menu_active);
     assert(enhanced_settings_navigation.state.screen == NAV_SETTINGS);
@@ -863,6 +979,7 @@ int main(int argc, char **argv) {
     assert(strcmp(entries[selected_index].name, "Example.nes") == 0);
     press(FROG_BTN_A);
     assert(enhanced_details_view() && access(test_launch, F_OK) != 0);
+    check_csv_title("Example.nes", "Custom Launch Title");
     press(FROG_BTN_START);
     assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_GAME_DETAILS);
     press(FROG_BTN_B);
@@ -910,5 +1027,6 @@ int main(int argc, char **argv) {
     test_ribbon(argv[1]);
     test_coverflow(argv[1]);
     test_home_ribbon_presentation();
+    test_platform_filelists(argv[1]);
     return 0;
 }
