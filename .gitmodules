@@ -1,4 +1,4 @@
 [submodule "frogui"]
 	path = frogui
-	url = git@github.com:tzubertowski/FrogUI.git
-	branch = treefrogui
+	url = https://github.com/Drakk3m/TreeFrogUI-Enhanced.git
+	branch = stable/frogui
