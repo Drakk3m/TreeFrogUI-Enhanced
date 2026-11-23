@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #define THEME_RESOURCE_PATH_MAX 256
 #define THEME_RESOURCE_ID_MAX 64
@@ -11,6 +12,9 @@
 #define THEME_BACKGROUND_MAX_WIDTH 640
 #define THEME_BACKGROUND_MAX_HEIGHT 480
 #define THEME_IMAGE_MAX_EDGE 256
+#define THEME_SOUND_RATE 44100
+#define THEME_SOUND_MAX_FRAMES (THEME_SOUND_RATE / 10)
+#define THEME_SOUND_MAX_BYTES (THEME_SOUND_MAX_FRAMES * 2 + 512)
 
 typedef enum {
     THEME_RESOURCE_BACKGROUND,
@@ -62,6 +66,10 @@ bool theme_resource_resolve(ThemeResourceManager *manager, const char *id,
  * probes and decodes those same bytes using its native decoder. */
 unsigned char *theme_resource_read(const ThemeResourceManager *manager,
                                    const ThemeResourceDescriptor *resource);
+/* Mono signed PCM16 at THEME_SOUND_RATE. Returns zero on validation failure. */
+size_t theme_resource_sound_pcm(const ThemeResourceManager *manager,
+                                const ThemeResourceDescriptor *resource,
+                                int16_t pcm[THEME_SOUND_MAX_FRAMES]);
 const ThemeResourceInfo *theme_resource_info(const ThemeResourceManager *manager);
 const ThemePresentation *theme_resource_presentation(const ThemeResourceManager *manager);
 bool theme_resource_supports_screen(const ThemeResourceManager *manager, unsigned w, unsigned h);

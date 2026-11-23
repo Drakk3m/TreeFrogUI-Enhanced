@@ -80,6 +80,10 @@ const NavSettingsLevel *nav_settings_level(const NavModel *model) {
 
 static NavEffect return_to_screen(NavModel *model, const NavCatalog *catalog, NavScreen screen) {
     NavState *state = &model->state;
+    if (screen == NAV_RECENTS || screen == NAV_APPS) {
+        state->screen = screen;
+        return screen == NAV_RECENTS ? NAV_EFFECT_RETURN_TO_RECENTS : NAV_EFFECT_RETURN_TO_APPS;
+    }
     if (!platform_exists(catalog, state->platform_id)) {
         state->platform_id[0] = '\0';
         state->game_id[0] = '\0';
@@ -149,7 +153,8 @@ static NavEffect route_screen(NavModel *model, const NavCatalog *catalog, NavInp
             return return_to_screen(model, catalog, NAV_GAME_DETAILS);
         if (state->screen == NAV_GAME_DETAILS)
             return return_to_screen(model, catalog, NAV_GAME_LIBRARY);
-        if (state->screen == NAV_GAME_LIBRARY)
+        if (state->screen == NAV_GAME_LIBRARY || state->screen == NAV_RECENTS ||
+            state->screen == NAV_APPS)
             return return_to_screen(model, catalog, NAV_PLATFORM_HOME);
         return NAV_EFFECT_NONE;
     }
@@ -164,6 +169,7 @@ static NavEffect route_screen(NavModel *model, const NavCatalog *catalog, NavInp
     if (input == NAV_INPUT_GALLERY)
         return NAV_EFFECT_NONE;
     if (input == NAV_INPUT_CONFIRM) {
+        if (state->screen == NAV_RECENTS || state->screen == NAV_APPS) return NAV_EFFECT_NONE;
         if (state->screen == NAV_PLATFORM_HOME) {
             if (!platform_exists(catalog, state->platform_id)) return NAV_EFFECT_NONE;
             state->screen = NAV_GAME_LIBRARY;

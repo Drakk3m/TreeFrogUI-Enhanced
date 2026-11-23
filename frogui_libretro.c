@@ -53,7 +53,7 @@
 #define CORES_PATH   SDCARD_BASE "/cubegm/cores"
 /* Core audio rate (single source of truth: av_info AND the menu-tick length
  * are both derived from this - see ui_menu_tick). */
-#define SAMPLE_RATE  44100
+#define SAMPLE_RATE  THEME_SOUND_RATE
 /* roms root: resolved at init. Prefer roms/, accept ROMS/ (exfat-mounted cards
  * are case-sensitive on this kernel), create roms/ if neither exists, so the
  * menu ALWAYS has a valid root instead of NULL entries → SIGBUS addr=0. */
@@ -1058,6 +1058,7 @@ static int settings_quick_resume = 0;      /* boot straight into last game: 0=of
 static int settings_custom_aspect_ratios = 0; /* expose forced aspect-ratio choices in PicoArch */
 static int settings_autosave_autoload = 1; /* auto-save on pause/quit + auto-load on any game launch (boot or manual pick): 0=off, 1=on */
 static int settings_anim = 1;           /* UI animations: 0=off, 1=on */
+static int settings_ui_sounds = 0;
 static int settings_menu_sounds = 0;    /* short navigation tick: 0=off, 1=on */
 enum { STYLE_VERTICAL, STYLE_HORIZONTAL, STYLE_SYSTEM, STYLE_PROMINIMAL, STYLE_COUNT };
 static int settings_style = STYLE_VERTICAL;
@@ -1078,6 +1079,10 @@ static int settings_battery_color = 0;   /* "Nel Battery Mode": solid color ligh
 static int settings_stock_battery = 1;   /* cubevol's original fb1 indicator */
 static int settings_game_switcher = 1;  /* recents as box-art carousel: 0=off, 1=on */
 static int settings_graphical_home = 0;
+
+static bool ui_audio_enabled(void) {
+    return settings_graphical_home ? settings_ui_sounds != 0 : settings_menu_sounds != 0;
+}
 /* Obsolete P3 selector retained only for reversible settings-file
  * compatibility. Theme packs are now selected by theme_pack_idx. */
 static char settings_enhanced_theme[THEME_RESOURCE_ID_MAX] = "default";
@@ -1165,7 +1170,13 @@ static const char *ui_theme_name(int index) {
 
 static void render_theme_heading(uint16_t *fb, int active, uint16_t bg,
                                  const char *title) {
-    if (settings_render_scheme_idx == 0)
+    if (settings_graphical_home) {
+        const char *fallback = active == MAIN_TAB_SETTINGS ? tr("tab.settings") :
+                               active == MAIN_TAB_APPS ? tr("tab.apps") :
+                               active == MAIN_TAB_RECENTS ? tr("tab.recents") :
+                               "EXPLORE CONTENT";
+        render_header(fb, active == MAIN_TAB_GAMES && title ? title : fallback);
+    } else if (settings_render_scheme_idx == 0)
         render_tabs(fb, active, bg);
     else if (title)
         render_header(fb, title);
@@ -1206,7 +1217,7 @@ typedef struct {
 
 static const SRow settings_rows[] = {
     { RT_HEADER, "settings.appearance" }, { RT_UI_THEME, "UI theme" }, { RT_THEME_PACK, "settings.background_theme_pack" }, { RT_SETTINGS_LAYOUT, "Settings style" }, { RT_TOGGLE, "Enhanced graphical platform home", &settings_graphical_home }, { RT_TOGGLE, "Decorative pills", &settings_pillboxes }, { RT_ICON_PACK, "settings.icon_pack" }, { RT_TOGGLE, "settings.center_text", &settings_center_text }, { RT_TOGGLE, "settings.friendly_system_names", &settings_friendly_names }, { RT_FONT, "settings.font" }, { RT_RANGE, "settings.font_size", &settings_font_size, 18, 26, 1 }, { RT_TOGGLE, "settings.battery_colour_mode", &settings_battery_color }, { RT_TOGGLE, "settings.stock_battery_indicator", &settings_stock_battery }, { RT_TOGGLE, "settings.background_images", &settings_backgrounds }, { RT_RANGE, "settings.background_dim", &settings_background_dim, 0, 100, 5 }, { RT_WALLPAPER, "settings.wallpaper" }, { RT_WALLFIT, "settings.background_image_fit" },
-    { RT_HEADER, "settings.general" }, { RT_LANGUAGE, "settings.language", &settings_language }, { RT_RANGE, "settings.brightness", &settings_brightness, 0, 100, SETTINGS_BRIGHTNESS_STEP }, { RT_TOGGLE, "settings.animations", &settings_anim }, { RT_TOGGLE, "settings.menu_sounds", &settings_menu_sounds }, { RT_TOGGLE, "settings.hide_extensions", &settings_hide_extensions }, { RT_TOGGLE, "settings.hide_empty_folders", &settings_hide_empty },
+    { RT_HEADER, "settings.general" }, { RT_LANGUAGE, "settings.language", &settings_language }, { RT_RANGE, "settings.brightness", &settings_brightness, 0, 100, SETTINGS_BRIGHTNESS_STEP }, { RT_TOGGLE, "settings.animations", &settings_anim }, { RT_TOGGLE, "settings.menu_sounds", &settings_menu_sounds }, { RT_TOGGLE, "settings.ui_sounds", &settings_ui_sounds }, { RT_TOGGLE, "settings.hide_extensions", &settings_hide_extensions }, { RT_TOGGLE, "settings.hide_empty_folders", &settings_hide_empty },
     { RT_HEADER, "settings.library" }, { RT_TOGGLE, "Apps in Settings", &settings_apps_in_settings }, { RT_OPEN_APPS, "Open Apps" }, { RT_ROM_SOURCE, "settings.rom_source" }, { RT_OTG_STATUS, "settings.otg_storage" }, { RT_TOGGLE, "settings.game_switcher", &settings_game_switcher }, { RT_TOGGLE, "Rounded recents screenshots", &settings_rounded_screenshots }, { RT_TOGGLE, "settings.start_in_recents", &settings_load_recents },
     { RT_HEADER, "settings.gameplay" }, { RT_TOGGLE, "settings.quick_resume", &settings_quick_resume }, { RT_TOGGLE, "settings.autosave_autoload", &settings_autosave_autoload }, { RT_TOGGLE, "settings.custom_aspect_ratios", &settings_custom_aspect_ratios },
     { RT_HEADER, "settings.rtc_emulation" }, { RT_RTC_TIME, "settings.rtc_time" }, { RT_RTC_SYNC, "settings.rtc_sync_usb" }, { RT_RANGE, "settings.rtc_bump", &settings_rtc_bump_minutes, 0, 1440, 5 },
@@ -1450,6 +1461,13 @@ static void settings_sections_load(void) {
 static int settings_vis_rows[SETTINGS_ROW_N];
 static int settings_vis_n = 0;
 
+static bool settings_row_available(const SRow *row) {
+    if (row->type == RT_OPEN_APPS) return settings_apps_in_settings;
+    if (row->val == &settings_ui_sounds) return settings_graphical_home;
+    if (row->val == &settings_menu_sounds) return !settings_graphical_home;
+    return true;
+}
+
 static void settings_build_vis_rows(void) {
     int n = 0;
     if (settings_layout == SETTINGS_LAYOUT_FOLDER) {
@@ -1466,7 +1484,7 @@ static void settings_build_vis_rows(void) {
                     continue;
                 }
                 if (section == settings_folder_section &&
-                    (settings_rows[i].type != RT_OPEN_APPS || settings_apps_in_settings))
+                    settings_row_available(&settings_rows[i]))
                     settings_vis_rows[n++] = i;
             }
         }
@@ -1482,7 +1500,7 @@ static void settings_build_vis_rows(void) {
                 while (i + 1 < SETTINGS_ROW_N && settings_section_of(i + 1) < 0)
                     i++;
             }
-        } else if (settings_rows[i].type != RT_OPEN_APPS || settings_apps_in_settings) {
+        } else if (settings_row_available(&settings_rows[i])) {
             settings_vis_rows[n++] = i;
         }
     }
@@ -1520,8 +1538,7 @@ static bool settings_row_visible(int i) {
     return true;   /* rows before any header: always visible */
 }
 static int settings_row_selectable(int i) {
-    if (i < 0 || i >= SETTINGS_ROW_N) return 0;
-    if (settings_rows[i].type == RT_OPEN_APPS) return settings_apps_in_settings;
+    if (i < 0 || i >= SETTINGS_ROW_N || !settings_row_available(&settings_rows[i])) return 0;
     if (settings_rows[i].type == RT_ROM_SOURCE) return otg_roms_available();
     /* Headers are selectable now (they collapse/expand sections). */
     if (settings_rows[i].type == RT_HEADER) {
@@ -1604,7 +1621,7 @@ static void settings_apply(void) {
     settings_write_volume();
     /* FrogUI has no continuous audio unless menu sounds are explicitly enabled.
        Zeroed samples leave the DAC/amp live; mute its real I2SO output instead. */
-    cube_set_i2so_output_muted(settings_menu_sounds ? 0 : 1);
+    cube_set_i2so_output_muted(ui_audio_enabled() ? 0 : 1);
 }
 /* Apply only the setting being previewed. The old generic settings_apply()
  * reloaded the current font and fsync'd sndgain.txt after every Left/Right press,
@@ -1690,6 +1707,7 @@ static void settings_preview_row(const SRow *r) {
 
 static void settings_load_file(void) {
     settings_graphical_home = 0;
+    settings_ui_sounds = 0;
     settings_enhanced_theme_present = false;
     strcpy(settings_enhanced_theme, "default");
     settings_override_meta_loaded = 0;
@@ -1765,6 +1783,8 @@ static void settings_load_file(void) {
             settings_anim = (strcmp(val, "off") == 0) ? 0 : 1;
         } else if (strcmp(line, "menu_sounds") == 0) {
             settings_menu_sounds = (strcmp(val, "on") == 0) ? 1 : 0;
+        } else if (strcmp(line, "ui_sounds") == 0) {
+            settings_ui_sounds = (strcmp(val, "on") == 0) ? 1 : 0;
         } else if (strcmp(line, "style") == 0) {
             for (int i = 0; i < STYLE_COUNT; i++)
                 if (strcasecmp(val, style_keys[i]) == 0) {
@@ -2013,6 +2033,7 @@ static void settings_save_file(void) {
     fprintf(f, "custom_aspect_ratios=%s\n", onoff_names[settings_custom_aspect_ratios]);
     fprintf(f, "animations=%s\n", onoff_names[settings_anim]);
     fprintf(f, "menu_sounds=%s\n", onoff_names[settings_menu_sounds]);
+    fprintf(f, "ui_sounds=%s\n", onoff_names[settings_ui_sounds]);
     fprintf(f, "ui_theme=%s\n", settings_render_scheme_idx > 0 &&
             settings_render_scheme_idx < render_scheme_count
                 ? render_scheme_files[settings_render_scheme_idx] : style_keys[settings_style]);
@@ -2882,6 +2903,25 @@ static void render_game_switcher_header(uint16_t *framebuffer, int barh) {
                          "RECENT GAMES");
 }
 
+static bool recents_can_move(int selected, int count, int direction) {
+    return selected >= 0 && selected < count &&
+           (direction < 0 ? selected > 0 : selected + 1 < count);
+}
+
+static void render_enhanced_recents_chevrons(uint16_t *fb, int selected, int count) {
+    const int inset = UI_S(6);
+    const int center_y = SCREEN_HEIGHT / 2;
+    const int radius = UI_S(5);
+    for (int direction = -1; direction <= 1; direction += 2) {
+        int x = direction < 0 ? inset : SCREEN_WIDTH - inset - UI_S(2);
+        uint16_t color = recents_can_move(selected, count, direction)
+                       ? COLOR_TEXT : COLOR_DISABLED;
+        for (int row = -radius; row <= radius; row++)
+            render_fill_rect(fb, x - direction * abs(row), center_y + row,
+                             UI_S(2), 1, color);
+    }
+}
+
 static void render_game_switcher(uint16_t *framebuffer) {
     const RecentGame *list = recent_games_get_list();
     int n = recent_games_get_count();
@@ -3546,6 +3586,7 @@ static int main_tab_active(void) {
  * scanner and browser still own the live listing and its selection. */
 static NavModel enhanced_settings_navigation;
 static char enhanced_settings_directory[MAX_PATH_LEN];
+static bool enhanced_settings_recents_fullscreen;
 
 static void switch_main_tab(int target) {
     int old = main_tab_active();
@@ -3645,7 +3686,11 @@ static void open_enhanced_settings(void) {
              "%s", current_path);
     const char *name = selected_index >= 0 && selected_index < entry_count
                      ? entries[selected_index].name : "";
-    if (strcmp(current_path, ROMS_PATH) == 0) {
+    if (viewing_recents || viewing_apps) {
+        navigation->state.screen = viewing_recents ? NAV_RECENTS : NAV_APPS;
+        enhanced_settings_recents_fullscreen = game_switcher_fullscreen;
+        snprintf(navigation->state.game_id, NAV_ID_MAX, "%s", name);
+    } else if (strcmp(current_path, ROMS_PATH) == 0) {
         snprintf(navigation->state.platform_id, NAV_ID_MAX, "%s", name);
     } else {
         size_t root_length = strlen(ROMS_PATH);
@@ -3690,6 +3735,22 @@ static void restore_settings_listing(void) {
         viewing_apps = false;
         apps_browsing = false;
         viewing_activity = false;
+
+        if (settings_graphical_home &&
+            (navigation->state.screen == NAV_RECENTS || navigation->state.screen == NAV_APPS)) {
+            int previous = navigation->state.screen == NAV_RECENTS
+                         ? recents_tab_selected : apps_tab_selected;
+            if (navigation->state.screen == NAV_RECENTS) {
+                enter_recents_view();
+                game_switcher_fullscreen = enhanced_settings_recents_fullscreen;
+            } else scan_apps_tab();
+            if (previous >= 0 && previous < entry_count &&
+                !strcmp(navigation->state.game_id, entries[previous].name))
+                select_visible_entry(previous);
+            else
+                select_visible_entry(visible_entry_named(navigation->state.game_id));
+            return;
+        }
     }
 
     scan_directory(ROMS_PATH);
@@ -4961,28 +5022,107 @@ static bool save_ui_screenshot(const uint16_t *pixels) {
  * the full second - static buffers are precious on these devices. */
 #define UI_TICK_MAX_FRAMES 9600
 
+typedef enum {
+    UI_SOUND_MOVE, UI_SOUND_SELECT, UI_SOUND_CONFIRM, UI_SOUND_CANCEL,
+    UI_SOUND_COUNT
+} UiSoundEvent;
+
+typedef struct {
+    size_t frames;
+    int16_t pcm[THEME_SOUND_MAX_FRAMES];
+} UiSound;
+
+static UiSound ui_sounds[UI_SOUND_COUNT];
+static int16_t ui_tick_stereo[UI_TICK_MAX_FRAMES * 2];
+static bool ui_sounds_ready;
+static bool ui_classic_tick_ready;
+static long long ui_sound_next_ms;
+
+static void ui_submit_sound(size_t frames) {
+    if (audio_batch_cb) audio_batch_cb(ui_tick_stereo, frames);
+    else if (audio_cb)
+        for (size_t i = 0; i < frames; i++)
+            audio_cb(ui_tick_stereo[i * 2], ui_tick_stereo[i * 2 + 1]);
+}
+
 static void ui_menu_tick(void) {
     if (!settings_menu_sounds) return;
-    static int16_t tick[UI_TICK_MAX_FRAMES * 2];
-    static int frames = 0;
-    static int ready = 0;
-    if (!ready || frames == 0) {
-        frames = (int)((double)SAMPLE_RATE * UI_TICK_MS / 1000.0 + 0.5);
-        if (frames < 16) frames = 16;             /* never degenerate */
-        if (frames > UI_TICK_MAX_FRAMES) frames = UI_TICK_MAX_FRAMES;
+    const int frames = SAMPLE_RATE * UI_TICK_MS / 1000;
+    if (!ui_classic_tick_ready) {
         for (int i = 0; i < frames; i++) {
-            int16_t s = ((i / 25) & 1) ? 900 : -900;
+            int16_t sample = ((i / 25) & 1) ? 900 : -900;
             int fade = (i < 200) ? i : (frames - i);
             if (fade > 2000) fade = 2000;
             if (fade < 1) fade = 1;
-            s = (int16_t)((int)s * fade / 2000);
-            tick[i * 2] = tick[i * 2 + 1] = s;
+            sample = (int16_t)((int)sample * fade / 2000);
+            ui_tick_stereo[i * 2] = ui_tick_stereo[i * 2 + 1] = sample;
         }
-        ready = 1;
+        ui_classic_tick_ready = true;
     }
-    if (audio_batch_cb) audio_batch_cb(tick, frames);
-    else if (audio_cb)
-        for (int i = 0; i < frames; i++) audio_cb(tick[i * 2], tick[i * 2 + 1]);
+    ui_submit_sound(frames);
+}
+
+/* Original short triangular tones with a linear envelope. Bundled in the
+ * frontend so the default pack has no required SD files. */
+static void ui_default_sound(UiSoundEvent event, UiSound *clip) {
+    static const int frequency[] = {520, 680, 820, 360};
+    static const int duration[] = {60, 64, 78, 72};
+    clip->frames = (size_t)(SAMPLE_RATE * duration[event] / 1000);
+    int period = SAMPLE_RATE / frequency[event];
+    for (int i = 0; i < (int)clip->frames; i++) {
+        int phase = i % period;
+        int swing = phase < period / 2 ? phase : period - phase;
+        int envelope = i < 180 ? i * 1024 / 180
+                               : ((int)clip->frames - i) * 1024 / ((int)clip->frames - 180);
+        clip->pcm[i] = (int16_t)(((swing * 5200 / period) - 1300) * envelope / 1024);
+    }
+}
+
+static void ui_prepare_sounds(ThemeResourceManager *theme, bool theme_changed) {
+    if (!settings_graphical_home || !settings_ui_sounds) {
+        ui_sounds_ready = false;
+        ui_sound_next_ms = 0;
+        return;
+    }
+    if (ui_sounds_ready && !theme_changed) return;
+    static const char *ids[] = {
+        "navigation.move.sound", "navigation.select.sound",
+        "navigation.confirm.sound", "navigation.cancel.sound"
+    };
+    for (int i = 0; i < UI_SOUND_COUNT; i++) {
+        UiSound *clip = &ui_sounds[i];
+        ThemeResourceDescriptor resource;
+        clip->frames = theme_resource_resolve(theme, ids[i], &resource)
+                     ? theme_resource_sound_pcm(theme, &resource, clip->pcm) : 0;
+        if (!clip->frames && i == UI_SOUND_MOVE &&
+            theme_resource_resolve(theme, "navigation.sound", &resource))
+            clip->frames = theme_resource_sound_pcm(theme, &resource, clip->pcm);
+        if (!clip->frames) ui_default_sound((UiSoundEvent)i, clip);
+    }
+    ui_sounds_ready = true;
+}
+
+static void ui_play_enhanced_sound(UiSoundEvent event, long long now) {
+    if (!settings_graphical_home || !settings_ui_sounds || !ui_sounds_ready ||
+        event >= UI_SOUND_COUNT || now < ui_sound_next_ms ||
+        (!audio_batch_cb && !audio_cb)) return;
+    const UiSound *clip = &ui_sounds[event];
+    if (!clip->frames) return;
+    for (size_t i = 0; i < clip->frames; i++)
+        ui_tick_stereo[i * 2] = ui_tick_stereo[i * 2 + 1] = clip->pcm[i];
+    ui_classic_tick_ready = false;
+    long long duration = (long long)(clip->frames * 1000 / SAMPLE_RATE);
+    ui_sound_next_ms = now + (duration < 55 ? 55 : duration);
+    ui_submit_sound(clip->frames);
+}
+
+static UiSoundEvent ui_navigation_sound(bool changed_view, bool changed_selection,
+                                        bool directional, bool confirm, bool cancel) {
+    if (!changed_view && !changed_selection) return UI_SOUND_COUNT;
+    if (cancel) return UI_SOUND_CANCEL;
+    if (confirm) return UI_SOUND_CONFIRM;
+    if (directional) return UI_SOUND_MOVE;
+    return changed_view ? UI_SOUND_SELECT : UI_SOUND_COUNT;
 }
 
 static void ui_transition_start(int direction) {
@@ -5520,6 +5660,14 @@ static enum EnhancedHomeItemKind enhanced_home_item_kind(int index, int platform
          : ENHANCED_HOME_RECENTS + index - platforms;
 }
 
+static int enhanced_home_center_offset(int selected, int count) {
+    int max_offset = count > ENHANCED_HOME_VISIBLE ? count - ENHANCED_HOME_VISIBLE : 0;
+    int offset = selected - ENHANCED_HOME_VISIBLE / 2;
+    if (offset < 0) offset = 0;
+    if (offset > max_offset) offset = max_offset;
+    return offset;
+}
+
 static bool enhanced_home_is_animating(void) {
     return enhanced_home_view() && enhanced_home_frame <= SYSTEM_CAROUSEL_FRAMES;
 }
@@ -5531,6 +5679,7 @@ static void enhanced_home_move(int direction) {
     int before = enhanced_home_index(platforms);
     nav_window_init(&window, count, ENHANCED_HOME_VISIBLE, before);
     if (!nav_window_move(&window, count, ENHANCED_HOME_VISIBLE, direction)) return;
+    window.offset = enhanced_home_center_offset(window.selected, count);
 
     enhanced_home_from_offset = enhanced_grid_prepared
                                ? enhanced_home_visible_offset : (float)scroll_offset;
@@ -5563,6 +5712,7 @@ static void prepare_enhanced_grid(void) {
     NavHorizontalWindow window;
     nav_window_init(&window, platforms + 3, ENHANCED_HOME_VISIBLE,
                     enhanced_home_index(platforms));
+    window.offset = enhanced_home_center_offset(window.selected, platforms + 3);
     enhanced_home_kind = enhanced_home_item_kind(window.selected, platforms);
     scroll_offset = window.offset;
     if (enhanced_home_kind == ENHANCED_HOME_PLATFORM)
@@ -6106,16 +6256,17 @@ static void handle_input(void) {
         if (at_tabs && next && tab < MAIN_TAB_SETTINGS) {
             int target = tab + 1;
             if (settings_apps_in_settings && target == MAIN_TAB_APPS) target++;
-            switch_main_tab(target);
+            if (settings_graphical_home && target == MAIN_TAB_SETTINGS &&
+                (enhanced_home_view() || viewing_apps || viewing_recents))
+                open_enhanced_settings();
+            else switch_main_tab(target);
             return;
         }
     }
 
-    /* START opens the existing Settings renderer from Enhanced Home/Library,
-     * including an empty collection. Other views keep their current controls. */
+    /* The existing Settings adapter also retains the current secondary list. */
     if (settings_graphical_home && !settings_menu_active &&
-        input_was_pressed(FROG_BTN_START) && !viewing_recents &&
-        !viewing_favourites && !viewing_apps && !apps_browsing &&
+        input_was_pressed(FROG_BTN_START) && !viewing_favourites && !apps_browsing &&
         !viewing_search && !viewing_activity) {
         open_enhanced_settings();
         return;
@@ -6567,10 +6718,12 @@ static void handle_input(void) {
         }
         /* In the game switcher (one game on screen at a time), Left/Right step
          * one game like Up/Down — no page jumping. */
-        bool switcher = viewing_recents && settings_game_switcher;
+        bool switcher = viewing_recents && (settings_game_switcher || settings_graphical_home);
         if (input_repeat(FROG_BTN_LEFT)) {
             if (switcher) {
-                if (selected_index > 0) selected_index--;
+                if (recents_can_move(selected_index, entry_count, -1)) selected_index--;
+                if (settings_graphical_home && selected_index < scroll_offset)
+                    scroll_offset = selected_index;
             } else {
                 selected_index = (selected_index >= VISIBLE_ENTRIES)
                                ? selected_index - VISIBLE_ENTRIES : 0;
@@ -6579,7 +6732,9 @@ static void handle_input(void) {
         }
         if (input_repeat(FROG_BTN_RIGHT)) {
             if (switcher) {
-                if (selected_index < entry_count-1) selected_index++;
+                if (recents_can_move(selected_index, entry_count, 1)) selected_index++;
+                if (settings_graphical_home && selected_index >= scroll_offset + VISIBLE_ENTRIES)
+                    scroll_offset = selected_index - VISIBLE_ENTRIES + 1;
             } else {
                 selected_index = (selected_index + VISIBLE_ENTRIES < entry_count)
                                ? selected_index + VISIBLE_ENTRIES : entry_count - 1;
@@ -6850,6 +7005,8 @@ static void render_port_migration(const PortMigration *port, int index,
 void retro_init(void) {
     dbg("retro_init start");
     nav_model_init(&enhanced_settings_navigation, 0);
+    ui_sounds_ready = false;
+    ui_sound_next_ms = 0;
     enhanced_home_kind = ENHANCED_HOME_PLATFORM;
     settings_apps_origin = false;
     viewing_info = false;
@@ -6921,7 +7078,7 @@ void retro_init(void) {
         dbg(message);
     }
     settings_bl_reassert = 120; /* re-assert safety net past cubevol's delayed apply */
-    settings_audio_mute_reassert = settings_menu_sounds ? 0 : 120;
+    settings_audio_mute_reassert = ui_audio_enabled() ? 0 : 120;
     dbg("settings loaded");
     recent_games_init();
     dbg("recent_games_init done");
@@ -6970,6 +7127,8 @@ void retro_init(void) {
 }
 
 void retro_deinit(void) {
+    ui_sounds_ready = false;
+    ui_sound_next_ms = 0;
     for (int i = 0; i < 8; i++) {
         free_thumbnail_copy(&catos_home_normal[i]);
         catos_home_normal_loaded[i] = false;
@@ -7101,7 +7260,11 @@ static void render_settings_menu(void) {
                      parts[RTC_HOUR], parts[RTC_MINUTE]);
             break;
         }
-        case RT_TOGGLE: snprintf(line, sizeof line, "%s: < %s >", tr(r->label), tr(*r->val ? "value.on" : "value.off")); break;
+        case RT_TOGGLE:
+            snprintf(line, sizeof line, "%s: < %s >",
+                     r->val == &settings_ui_sounds ? tr_or(r->label, "UI Sounds") : tr(r->label),
+                     tr(*r->val ? "value.on" : "value.off"));
+            break;
         case RT_RANGE:
             if (r->val == &settings_font_size)
                 snprintf(line, sizeof line, "%s: < %d px >", tr(r->label), *r->val);
@@ -7432,10 +7595,17 @@ void retro_run(void) {
         #undef RB
         input_set_ext_raw(raw);
     }
+    bool old_audio_enabled = ui_audio_enabled();
+    bool old_enhanced_audio = settings_graphical_home != 0;
+    enum EnhancedHomeItemKind old_home_kind = enhanced_home_kind;
     int old_selected = selected_index;
     int old_scroll = scroll_offset;
     int old_settings_row = settings_menu_idx;
     bool old_settings_active = settings_menu_active;
+    const int *old_setting_value = old_settings_active && old_settings_row >= 0 &&
+                                   old_settings_row < SETTINGS_ROW_N
+                                 ? settings_rows[old_settings_row].val : NULL;
+    int old_setting = old_setting_value ? *old_setting_value : 0;
     bool old_core_picker_active = core_picker_active;
     int old_core_picker_idx = core_picker_idx;
     int old_core_picker_scroll = core_picker_scroll;
@@ -7484,10 +7654,30 @@ void retro_run(void) {
                                  settings_anim ? (catching_up ? 1 : MENU_PILL_FRAMES) : 0);
         }
     }
-    if (old_selected != selected_index || old_settings_row != settings_menu_idx ||
+    if (old_audio_enabled != ui_audio_enabled() &&
+        (old_enhanced_audio || settings_graphical_home)) {
+        cube_set_i2so_output_muted(ui_audio_enabled() ? 0 : 1);
+        settings_audio_mute_reassert = ui_audio_enabled() ? 0 : 120;
+    }
+    ui_prepare_sounds(enhanced_theme, enhanced_theme_changed);
+    bool classic_tick = old_selected != selected_index || old_settings_row != settings_menu_idx ||
         old_settings_active != settings_menu_active || old_recents != viewing_recents ||
-        old_favourites != viewing_favourites || strcmp(old_path, current_path) != 0)
-        ui_menu_tick();
+        old_favourites != viewing_favourites || strcmp(old_path, current_path) != 0;
+    if (!settings_graphical_home) {
+        if (classic_tick) ui_menu_tick();
+    } else {
+        bool changed_view = !same_menu;
+        bool changed_selection = old_selected != selected_index ||
+                                 old_settings_row != settings_menu_idx ||
+                                 old_home_kind != enhanced_home_kind ||
+                                 (old_setting_value && old_setting != *old_setting_value);
+        bool directional = input_is_pressed(FROG_BTN_LEFT) || input_is_pressed(FROG_BTN_RIGHT) ||
+                           input_is_pressed(FROG_BTN_UP) || input_is_pressed(FROG_BTN_DOWN);
+        UiSoundEvent event = ui_navigation_sound(changed_view, changed_selection, directional,
+            input_was_pressed(FROG_BTN_A) || input_was_pressed(FROG_BTN_START),
+            input_was_pressed(FROG_BTN_B));
+        if (event != UI_SOUND_COUNT) ui_play_enhanced_sound(event, monotonic_ms());
+    }
 
     /* Entering the systems screen can also happen after a folder, Settings or
      * Recents re-scan changed selected_index. Start that screen settled rather
@@ -7766,6 +7956,8 @@ void retro_run(void) {
         /* Do not paint or discard the cached Games banner behind GameSwitcher. */
         render_clear_screen(framebuffer);
         render_game_switcher(framebuffer);
+        if (settings_graphical_home)
+            render_enhanced_recents_chevrons(framebuffer, selected_index, entry_count);
     } else {
         /* Keep calling banner_render while a banner is being built in row
          * batches; otherwise the first pending batch would never advance. */
@@ -7921,6 +8113,8 @@ void retro_run(void) {
             render_activity_page(framebuffer);
 
         render_legend(framebuffer, legend_mode, show_select, show_search);
+        if (settings_graphical_home && viewing_recents)
+            render_enhanced_recents_chevrons(framebuffer, selected_index, entry_count);
         }
     }
 

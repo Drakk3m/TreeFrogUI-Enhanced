@@ -267,6 +267,98 @@ static void test_enhanced_art(const char *root) {
     framebuffer = NULL;
 }
 
+static size_t sound_batches, sound_frames;
+static int16_t first_sample;
+
+static size_t capture_batch(const int16_t *pcm, size_t frames) {
+    sound_batches++;
+    sound_frames += frames;
+    first_sample = pcm[0];
+    for (size_t i = 0; i < frames; i++) assert(pcm[2 * i] == pcm[2 * i + 1]);
+    return frames;
+}
+
+static void capture_sample(int16_t left, int16_t right) {
+    assert(left == right);
+    sound_frames++;
+}
+
+static void test_ui_sounds(const char *root) {
+    char path[MAX_PATH_LEN];
+    assert(snprintf(path, sizeof path, "%s/sound.ini", root) < (int)sizeof path);
+    write_fixture(path, "[theme]\nmanifest_version=1\n"
+                        "[resource.navigation.move.sound]\npath=valid.wav\n"
+                        "[resource.navigation.cancel.sound]\npath=invalid.wav\n");
+    unsigned char wave[] = {
+        'R','I','F','F', 40,0,0,0, 'W','A','V','E',
+        'f','m','t',' ', 16,0,0,0, 1,0,1,0, 0x44,0xac,0,0, 0x88,0x58,1,0, 2,0,16,0,
+        'd','a','t','a', 4,0,0,0, 0x00,0x40,0x00,0xc0
+    };
+    assert(snprintf(path, sizeof path, "%s/valid.wav", root) < (int)sizeof path);
+    write_bytes(path, wave, sizeof wave);
+    assert(snprintf(path, sizeof path, "%s/invalid.wav", root) < (int)sizeof path);
+    wave[22] = 2; /* Unsupported stereo and inconsistent byte/block layout. */
+    write_bytes(path, wave, sizeof wave);
+    ThemeResourceManager *theme = theme_resource_create(root, THEME_RESOURCE_CACHE_MAX);
+    assert(theme && theme_resource_load_manifest(theme, "sound.ini"));
+
+    int ui_row = -1;
+    for (int i = 0; i < SETTINGS_ROW_N; i++)
+        if (settings_rows[i].val == &settings_ui_sounds) ui_row = i;
+    assert(ui_row >= 0);
+    settings_graphical_home = 0;
+    assert(!settings_row_available(&settings_rows[ui_row]));
+    settings_ui_sounds = 1;
+    settings_save_file();
+    settings_ui_sounds = 0;
+    settings_load_file();
+    assert(!settings_graphical_home && settings_ui_sounds);
+    settings_graphical_home = 1;
+    assert(settings_row_available(&settings_rows[ui_row]) && ui_audio_enabled());
+
+    ui_prepare_sounds(theme, true);
+    assert(ui_sounds[UI_SOUND_MOVE].frames == 2);
+    assert(ui_sounds[UI_SOUND_MOVE].pcm[0] == 4096 && ui_sounds[UI_SOUND_MOVE].pcm[1] == -4096);
+    assert(ui_sounds[UI_SOUND_CONFIRM].frames > 2400);
+    assert(ui_sounds[UI_SOUND_CANCEL].frames > 2400);
+    assert(ui_navigation_sound(false, false, true, false, false) == UI_SOUND_COUNT);
+    assert(ui_navigation_sound(false, true, false, false, false) == UI_SOUND_COUNT);
+    assert(ui_navigation_sound(false, true, true, false, false) == UI_SOUND_MOVE);
+    assert(ui_navigation_sound(true, true, true, true, false) == UI_SOUND_CONFIRM);
+    assert(ui_navigation_sound(true, true, false, false, true) == UI_SOUND_CANCEL);
+    assert(ui_navigation_sound(true, false, false, false, false) == UI_SOUND_SELECT);
+    retro_set_audio_sample_batch(capture_batch);
+    ui_play_enhanced_sound(UI_SOUND_MOVE, 1000);
+    assert(sound_batches == 1 && sound_frames == 2 && first_sample == 4096);
+    ui_play_enhanced_sound(UI_SOUND_CONFIRM, 1060);
+    ui_play_enhanced_sound(UI_SOUND_CANCEL, 1070);
+    assert(sound_batches == 2);
+    ui_prepare_sounds(NULL, true);
+    assert(ui_sounds[UI_SOUND_MOVE].frames == SAMPLE_RATE * 60 / 1000);
+    settings_ui_sounds = 0;
+    ui_play_enhanced_sound(UI_SOUND_MOVE, 2000);
+    assert(sound_batches == 2);
+    settings_ui_sounds = 1;
+    settings_graphical_home = 0;
+    settings_menu_sounds = 1;
+    ui_play_enhanced_sound(UI_SOUND_MOVE, 2000);
+    assert(sound_batches == 2);
+    ui_menu_tick();
+    assert(sound_batches == 3);
+    retro_set_audio_sample_batch(NULL);
+    retro_set_audio_sample(capture_sample);
+    size_t start_frames = sound_frames;
+    settings_graphical_home = 1;
+    ui_play_enhanced_sound(UI_SOUND_MOVE, 2100);
+    assert(sound_frames - start_frames == ui_sounds[UI_SOUND_MOVE].frames);
+    retro_set_audio_sample(NULL);
+    settings_ui_sounds = 0;
+    settings_menu_sounds = 0;
+    ui_prepare_sounds(NULL, false);
+    theme_resource_destroy(theme);
+    puts("PASS audio WAV validation, event gating, fallback, persistence, and Libretro callbacks");
+}
+
 static void test_ribbon(const char *root) {
     char path[MAX_PATH_LEN];
     for (int i = 0; i < 7; i++) {
@@ -282,6 +374,15 @@ static void test_ribbon(const char *root) {
     assert(entry_count > ENHANCED_HOME_VISIBLE);
     framebuffer = calloc(640 * 480, sizeof *framebuffer);
     assert(framebuffer);
+    for (int count = 0; count <= 3; count++) {
+        for (int row = 0; row < (count ? count : 1); row++) {
+            render_enhanced_recents_chevrons(framebuffer, row, count);
+            assert(framebuffer[240 * 640 + UI_S(6)] ==
+                   (row > 0 ? COLOR_TEXT : COLOR_DISABLED));
+            assert(framebuffer[240 * 640 + 640 - UI_S(6) - UI_S(2)] ==
+                   (row + 1 < count ? COLOR_TEXT : COLOR_DISABLED));
+        }
+    }
     prepare_enhanced_grid();
     render_enhanced_home(framebuffer); /* Offline export absent. */
     assert(selected_index == 0 && scroll_offset == 0);
@@ -290,8 +391,18 @@ static void test_ribbon(const char *root) {
 
     press(FROG_BTN_RIGHT);
     prepare_enhanced_grid();
-    assert(selected_index == 1 && scroll_offset == 1);
-    assert(enhanced_grid_first == 0 && enhanced_grid_count == ENHANCED_HOME_VISIBLE + 1);
+    assert(selected_index == 1 && scroll_offset == 0);
+    assert(enhanced_grid_first == 0 && enhanced_grid_count == ENHANCED_HOME_VISIBLE);
+    assert(enhanced_home_center_offset(0, 9) == 0);
+    assert(enhanced_home_center_offset(4, 9) == 2);
+    assert(enhanced_home_center_offset(8, 9) == 4);
+    assert(enhanced_home_center_offset(3, 4) == 0);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_grid();
+    assert(selected_index == 2 && scroll_offset == 0);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_grid();
+    assert(selected_index == 3 && scroll_offset == 1);
     for (int i = 0; i < 5; i++) render_enhanced_home(framebuffer);
     float position = enhanced_home_visible_offset;
     assert(position > 0.0f && position < 1.0f);
@@ -329,6 +440,10 @@ static void test_ribbon(const char *root) {
     settings_apps_in_settings = 1;
     press(FROG_BTN_A);
     assert(viewing_apps);
+    press(FROG_BTN_START);
+    assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_APPS);
+    press(FROG_BTN_B);
+    assert(viewing_apps);
     press(FROG_BTN_B);
     assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_APPS);
     settings_apps_in_settings = 0;
@@ -342,6 +457,17 @@ static void test_ribbon(const char *root) {
     press(FROG_BTN_START);
     assert(settings_menu_active);
     press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    press(FROG_BTN_A);
+    assert(viewing_recents && entry_count >= 2);
+    settings_game_switcher = 1;
+    game_switcher_fullscreen = true;
+    selected_index = 1;
+    press(FROG_BTN_START);
+    assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_RECENTS);
+    press(FROG_BTN_B);
+    assert(viewing_recents && selected_index == 1 && game_switcher_fullscreen);
+    press(FROG_BTN_R1);
     assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_RECENTS);
     press(FROG_BTN_A);
     assert(viewing_recents);
@@ -527,6 +653,7 @@ int main(int argc, char **argv) {
     scan_directory(ROMS_PATH);
     assert(entry_count == 3);
     test_enhanced_art(argv[1]);
+    test_ui_sounds(argv[1]);
     test_ribbon(argv[1]);
     return 0;
 }

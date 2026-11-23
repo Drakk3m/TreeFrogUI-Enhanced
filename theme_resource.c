@@ -156,7 +156,11 @@ static ThemeResourceKind resource_kind(const char *id) {
     if (scoped_id(id, "settings.", ".icon")) return THEME_RESOURCE_SETTINGS_ICON;
     if (strcmp(id, "cover.placeholder") == 0) return THEME_RESOURCE_COVER_PLACEHOLDER;
     if (strcmp(id, "achievement.badge") == 0) return THEME_RESOURCE_ACHIEVEMENT_BADGE;
-    if (strcmp(id, "navigation.sound") == 0) return THEME_RESOURCE_NAV_SOUND;
+    if (strcmp(id, "navigation.sound") == 0 ||
+        strcmp(id, "navigation.move.sound") == 0 ||
+        strcmp(id, "navigation.select.sound") == 0 ||
+        strcmp(id, "navigation.confirm.sound") == 0 ||
+        strcmp(id, "navigation.cancel.sound") == 0) return THEME_RESOURCE_NAV_SOUND;
     return THEME_RESOURCE_COUNT;
 }
 
@@ -380,6 +384,62 @@ unsigned char *theme_resource_read(const ThemeResourceManager *manager,
     }
     fclose(file);
     return bytes;
+}
+
+static unsigned sound_le16(const unsigned char *p) {
+    return (unsigned)p[0] | (unsigned)p[1] << 8;
+}
+
+static uint32_t sound_le32(const unsigned char *p) {
+    return sound_le16(p) | (uint32_t)sound_le16(p + 2) << 16;
+}
+
+size_t theme_resource_sound_pcm(const ThemeResourceManager *manager,
+                                const ThemeResourceDescriptor *resource,
+                                int16_t pcm[THEME_SOUND_MAX_FRAMES]) {
+    if (!resource || !pcm || resource->kind != THEME_RESOURCE_NAV_SOUND ||
+        resource->file_size < 44 || resource->file_size > THEME_SOUND_MAX_BYTES) return 0;
+    size_t size = resource->file_size;
+    unsigned char *bytes = theme_resource_read(manager, resource);
+    if (!bytes) return 0;
+    bool format = false;
+    const unsigned char *data = NULL;
+    size_t frames = 0;
+    if (memcmp(bytes, "RIFF", 4) || memcmp(bytes + 8, "WAVE", 4) ||
+        sound_le32(bytes + 4) != size - 8) goto done;
+    size_t offset = 12;
+    while (size - offset >= 8) {
+        const unsigned char *chunk = bytes + offset;
+        uint32_t length = sound_le32(chunk + 4);
+        offset += 8;
+        if (length > size - offset || (length & 1u) > size - offset - length) goto done;
+        if (!memcmp(chunk, "fmt ", 4)) {
+            const unsigned char *fmt = bytes + offset;
+            if (format || length < 16 || sound_le16(fmt) != 1 || sound_le16(fmt + 2) != 1 ||
+                sound_le32(fmt + 4) != THEME_SOUND_RATE ||
+                sound_le32(fmt + 8) != THEME_SOUND_RATE * 2 ||
+                sound_le16(fmt + 12) != 2 || sound_le16(fmt + 14) != 16) goto done;
+            format = true;
+        } else if (!memcmp(chunk, "data", 4)) {
+            if (data || length == 0 || (length & 1u) || length / 2 > THEME_SOUND_MAX_FRAMES) goto done;
+            data = bytes + offset;
+            frames = length / 2;
+        }
+        offset += length + (length & 1u);
+    }
+    if (format && data && offset == size) {
+        for (size_t i = 0; i < frames; i++) {
+            int sample = (int)sound_le16(data + i * 2);
+            if (sample >= 32768) sample -= 65536;
+            pcm[i] = (int16_t)(sample / 4);
+        }
+    } else frames = 0;
+    free(bytes);
+    return frames;
+
+done:
+    free(bytes);
+    return 0;
 }
 
 const ThemeResourceInfo *theme_resource_info(const ThemeResourceManager *manager) {
