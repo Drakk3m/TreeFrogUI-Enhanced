@@ -899,6 +899,61 @@ static void test_platform_filelists(const char *root) {
     puts("PASS per-platform CSV scanner, title resolution, fallback and resource limits");
 }
 
+static void test_ra_home(const char *root) {
+    char directory[MAX_PATH_LEN], profile[MAX_PATH_LEN], avatar[MAX_PATH_LEN];
+    assert(snprintf(directory, sizeof directory, "%s/ra", root) < (int)sizeof directory);
+    load_ra_home(directory);
+    assert(!ra_home_profile_valid);
+    assert(mkdir(directory, 0700) == 0);
+    assert(snprintf(profile, sizeof profile, "%s/profile.json", directory) < (int)sizeof profile);
+    assert(snprintf(avatar, sizeof avatar, "%s/avatar.png", directory) < (int)sizeof avatar);
+    write_fixture(profile, "{\"avatar\":\"avatar.png\",\"username\":\"Pilot\\u00e9\"}");
+    load_ra_home(directory);
+    assert(ra_home_profile_valid && !ra_avatar_icon.pixels);
+    assert(!strcmp(ra_home_profile.username, "Piloté"));
+    write_bytes(avatar, corrupt_png, sizeof corrupt_png);
+    load_ra_home(directory);
+    assert(ra_home_profile_valid && !ra_avatar_icon.pixels);
+    write_bytes(avatar, icon_png, sizeof icon_png);
+    load_ra_home(directory);
+    assert(ra_home_profile_valid && ra_avatar_icon.pixels && ra_avatar_icon.width == RA_AVATAR_EDGE);
+    assert(unlink(profile) == 0 && unlink(avatar) == 0);
+    uint16_t *frame = calloc(640 * 480, sizeof(*frame));
+    assert(frame);
+    for (int i = 0; i < 4; i++) render_ra_home(frame);
+    size_t painted = 0;
+    for (int y = 0; y < 480; y++)
+        for (int x = 0; x < 640; x++)
+            if (frame[y * 640 + x]) {
+                assert(y >= 39 && y < 82 && x >= 310);
+                painted++;
+            }
+    assert(painted > 0);
+    free(frame);
+    load_ra_home(directory);
+    assert(!ra_home_profile_valid && !ra_avatar_icon.pixels);
+    write_fixture(profile, "{\"avatar\":null,\"username\":\"Valid\",\"schema_version\":9}");
+    load_ra_home(directory);
+    assert(!ra_home_profile_valid);
+    write_fixture(profile, "{\"avatar\":null,\"username\":\"broken\"");
+    load_ra_home(directory);
+    assert(!ra_home_profile_valid);
+    FILE *file = fopen(profile, "wb");
+    assert(file);
+    fputs("{\"avatar\":null,\"username\":\"", file);
+    for (int i = 0; i < 81; i++) fputc('P', file);
+    fputs("\"}", file);
+    assert(fclose(file) == 0);
+    load_ra_home(directory);
+    assert(!ra_home_profile_valid);
+    file = fopen(profile, "wb");
+    assert(file && ftruncate(fileno(file), 4097) == 0);
+    assert(fclose(file) == 0);
+    load_ra_home(directory);
+    assert(!ra_home_profile_valid);
+    puts("PASS offline RA identity, avatar validation, snapshot drawing, and unsupported data");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
@@ -1028,5 +1083,6 @@ int main(int argc, char **argv) {
     test_coverflow(argv[1]);
     test_home_ribbon_presentation();
     test_platform_filelists(argv[1]);
+    test_ra_home(argv[1]);
     return 0;
 }

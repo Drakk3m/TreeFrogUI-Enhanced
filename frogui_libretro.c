@@ -35,6 +35,7 @@
 #include "theme.h"
 #include "theme_resource.h"
 #include "filelist.h"
+#include "ra_profile.h"
 #include "frogui_settings.h"
 #include "theme_profile.h"
 #include "render_theme.h"
@@ -5919,6 +5920,83 @@ static void enhanced_home_utility_icon(uint16_t *fb, enum EnhancedHomeItemKind k
     }
 }
 
+#define RA_SD_DIRECTORY SDCARD_BASE "/cubegm/enhanced/ra"
+enum { RA_AVATAR_EDGE = 40 };
+static RaProfile ra_home_profile;
+static bool ra_home_profile_valid;
+static uint16_t ra_avatar_pixels[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
+static uint8_t ra_avatar_alpha[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
+static SystemIcon ra_avatar_icon;
+
+static void load_ra_home(const char *directory) {
+    ra_home_profile_valid = ra_profile_read(directory, &ra_home_profile);
+    ra_avatar_icon = (SystemIcon){0};
+    if (!ra_home_profile_valid || !ra_home_profile.avatar) return;
+    char path[MAX_PATH_LEN];
+    int length = snprintf(path, sizeof path, "%s/avatar.png", directory);
+    if (length <= 0 || (size_t)length >= sizeof path) return;
+    Thumbnail decoded = {0};
+    if (!load_bounded_png_thumbnail(path, &decoded)) return;
+    int w = decoded.width, h = decoded.height;
+    int edge = w > h ? w : h;
+    w = w * RA_AVATAR_EDGE / edge;
+    h = h * RA_AVATAR_EDGE / edge;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int source = y * decoded.height / h * decoded.width + x * decoded.width / w;
+            ra_avatar_pixels[y * w + x] = decoded.data[source];
+            ra_avatar_alpha[y * w + x] = decoded.alpha ? decoded.alpha[source] : 255;
+        }
+    }
+    ra_avatar_icon.pixels = ra_avatar_pixels;
+    ra_avatar_icon.alpha = ra_avatar_alpha;
+    ra_avatar_icon.width = w;
+    ra_avatar_icon.height = h;
+}
+
+static void render_ra_home(uint16_t *fb) {
+    if (!ra_home_profile_valid) return;
+    int icon = UI_S(34), gap = UI_S(8), trophy = UI_S(14);
+    int y = UI_S(39), right = SCREEN_WIDTH - UI_S(24);
+    int text = font_measure_text(ra_home_profile.username);
+    int max_text = SCREEN_WIDTH / 3;
+    if (text > max_text) text = max_text;
+    /* Reserved visual value until the export provides earned progress. */
+    const char *pending_count = "0";
+    int count_width = font_measure_text(pending_count);
+    int left = right - icon - gap * 5 - text - trophy - count_width;
+    render_rounded_rect_alpha(fb, left, y, right - left, icon + gap,
+                              gap, COLOR_BG, 216);
+    int ax = left + gap, ay = y + gap / 2;
+    if (ra_avatar_icon.pixels) {
+        system_icon_draw(fb, &ra_avatar_icon, ax, ay, icon, icon);
+    } else {
+        int center = ax + icon / 2;
+        int head = icon / 5;
+        render_rounded_rect(fb, center - head, ay + UI_S(3), head * 2,
+                            head * 2, head, COLOR_TEXT);
+        render_rounded_rect(fb, ax + UI_S(5), ay + icon * 3 / 5,
+                            icon - UI_S(10), icon / 3, UI_S(5), COLOR_TEXT);
+    }
+    int tx = ax + icon + gap;
+    int ty = y + (icon + gap - font_get_size()) / 2;
+    font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, tx, ty,
+                           ra_home_profile.username, COLOR_TEXT, tx, y, text, icon + gap);
+    int count_x = right - gap - count_width;
+    int cup = count_x - gap - trophy;
+    font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, count_x, ty,
+                   pending_count, COLOR_DISABLED);
+    int top = y + (icon + gap - trophy) / 2;
+    int line = UI_S(2);
+    render_rounded_rect(fb, cup + line, top, trophy - line * 2, trophy * 2 / 3,
+                        line, COLOR_TEXT);
+    render_fill_rect(fb, cup, top + line, trophy, line, COLOR_TEXT);
+    render_fill_rect(fb, cup + (trophy - line) / 2, top + trophy / 2, line, trophy / 2, COLOR_TEXT);
+    render_fill_rect(fb, cup + line, top + trophy - line, trophy - line * 2, line, COLOR_TEXT);
+}
+
 static void render_enhanced_home(uint16_t *fb) {
     float progress = 1.0f;
     if (enhanced_home_frame < SYSTEM_CAROUSEL_FRAMES)
@@ -5936,6 +6014,7 @@ static void render_enhanced_home(uint16_t *fb) {
     const int platforms = enhanced_home_platform_count();
     const int selected = enhanced_home_index(platforms);
     render_battery(fb, frogui_battery_pct());
+    render_ra_home(fb);
 
     for (size_t slot = 0; enhanced_grid_prepared && slot < enhanced_grid_count; slot++) {
         int index = enhanced_grid_first + (int)slot;
@@ -7394,6 +7473,7 @@ static void render_port_migration(const PortMigration *port, int index,
 
 void retro_init(void) {
     dbg("retro_init start");
+    load_ra_home(RA_SD_DIRECTORY);
     nav_model_init(&enhanced_settings_navigation, 0);
     ui_sounds_ready = false;
     ui_sound_next_ms = 0;
