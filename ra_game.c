@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -300,6 +299,7 @@ typedef struct {
     int console_id;
     int game_id;
     long long size;
+    long long mtime_ns;
     char hash[33];
 } RaIdentity;
 
@@ -323,13 +323,17 @@ static bool read_identity(Json *j, const char *platform, RaIdentity *identity) {
         } else if (!strcmp(key, "size")) {
             if (identity->size >= 0 || !integer64(j, &identity->size) ||
                 identity->size < 0) return false;
+        } else if (!strcmp(key, "mtime_ns")) {
+            if (identity->mtime_ns >= 0 || !integer64(j, &identity->mtime_ns) ||
+                identity->mtime_ns <= 0) return false;
         } else if (!strcmp(key, "method")) {
             if (method[0] || !string(j, method, sizeof method)) return false;
         } else if (!skip(j, 0)) return false;
 
         if (take(j, '}'))
-            return !strcasecmp(folder, platform) && identity->console_id > 0 &&
-                   identity->game_id > 0 && identity->size >= 0 && hash_ok(identity->hash) &&
+            return !strcmp(folder, platform) && identity->console_id > 0 &&
+                   identity->game_id > 0 && identity->size >= 0 && identity->mtime_ns > 0 &&
+                   hash_ok(identity->hash) &&
                    (!strcmp(method, "rcheevos") || !strcmp(method, "rcheevos_compatible"));
     } while (take(j, ','));
     return false;
@@ -370,14 +374,18 @@ bool ra_game_read(const char *root, const char *rom_path, const char *platform, 
     size_t size;
     if (written < 0 || (size_t)written >= sizeof path ||
         !read_file(path, &data, &size, RA_IDENTITY_MAX)) return false;
-    RaIdentity identity = { .size = -1 };
+    RaIdentity identity = { .size = -1, .mtime_ns = -1 };
     bool matched = parse_identity(data, size, relative, platform, &identity);
     free(data);
     if (!matched) return false;
 
-    /* Studio records the source timestamp. FAT may round or change it on copy. */
     struct stat st;
     if (stat(rom_path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size != identity.size)
+        return false;
+    /* Studio copies ROMs with copy2. Allow FAT's two-second timestamp granularity. */
+    long long exported_seconds = identity.mtime_ns / 1000000000LL;
+    long long observed_seconds = st.st_mtime;
+    if (observed_seconds < exported_seconds - 2 || observed_seconds > exported_seconds + 2)
         return false;
     written = snprintf(path, sizeof path, "%s/cubegm/enhanced/ra/cache/%d/%s/gamepack.json",
                        root, identity.console_id, identity.hash);

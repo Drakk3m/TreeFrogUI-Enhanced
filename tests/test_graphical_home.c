@@ -7,6 +7,8 @@ static char test_theme_pack_root[512];
 static char test_settings[MAX_PATH_LEN];
 static char test_cache[MAX_PATH_LEN];
 static char test_launch[MAX_PATH_LEN];
+static char test_sessions[MAX_PATH_LEN];
+static char test_playtime[MAX_PATH_LEN];
 
 static const char *cache_fixture_path(const char *path, char *mapped, size_t size) {
     size_t prefix = strlen(CACHE_DIR);
@@ -68,6 +70,10 @@ FILE *__real_fopen(const char *path, const char *mode);
 FILE *__wrap_fopen(const char *path, const char *mode) {
     char mapped[MAX_PATH_LEN];
     path = cache_fixture_path(path, mapped, sizeof mapped);
+    if (test_sessions[0] && strcmp(path, PLAY_SESSIONS_PATH) == 0)
+        return __real_fopen(test_sessions, mode);
+    if (test_playtime[0] && strcmp(path, "/mnt/sdcard/frogui/playtime.txt") == 0)
+        return __real_fopen(test_playtime, mode);
     if (strcmp(path, LAUNCH_FILE) == 0) return __real_fopen(test_launch, mode);
     if (strcmp(path, SETTINGS_FILE) == 0)
         return __real_fopen(test_settings, mode);
@@ -855,6 +861,23 @@ static void test_platform_filelists(const char *root) {
     check_csv_title("Bad.nes", "Bad");
     check_csv_title("Large.nes", "Large");
     check_csv_title("Quotes.nes", "The \"Game\"");
+    file = fopen(csv, "wb");
+    assert(file);
+    fputs("Rom.ext,Display Title,ChineseTitle,Developer,Description\n"
+          "Large.nes,Retained title,,Studio,", file);
+    for (int i = 0; i < 300; i++) fputc('Z', file);
+    fputs("\nQuotes.nes,Valid title,,Studio,", file);
+    for (int i = 0; i < 250; i++) fputc('A', file);
+    assert(fclose(file) == 0);
+    scan_directory(current_path);
+    check_csv_title("Large.nes", "Retained title");
+    const char *value = filelist_details + filelist_detail_offsets[selected_index] - 1;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) value += strlen(value) + 1;
+    assert(!*value);
+    check_csv_title("Quotes.nes", "Valid title");
+    value = filelist_details + filelist_detail_offsets[selected_index] - 1;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) value += strlen(value) + 1;
+    assert(strlen(value) == 250);
     strcpy(current_path, nested);
     scan_directory(current_path);
     check_csv_title("Plain.nes", "Plain");
@@ -889,14 +912,18 @@ static void test_platform_filelists(const char *root) {
     assert(entry_count == discovered + 1500);
     file = fopen(csv, "wb");
     assert(file);
-    for (int i = 0; i < 1500; i++) fprintf(file, "Item%04d.nes,Title %04d,\n", i, i);
+    fputs("Rom.ext,Display Title,ChineseTitle,Description\n", file);
+    for (int i = 0; i < 1500; i++)
+        fprintf(file, "Item%04d.nes,Title %04d,,Summary %04d\n", i, i, i);
     assert(fclose(file) == 0);
     start = monotonic_ms();
     scan_directory(current_path);
     long long with = monotonic_ms() - start;
     check_csv_title("Item1499.nes", "Title 1499");
     printf("Filelist fixture: 1500 mapped ROMs, %zu bytes retained, scans %lld ms without / %lld ms with CSV\n",
-           filelist_capacity + (size_t)entry_count * sizeof(*filelist_offsets), without, with);
+           filelist_capacity + filelist_detail_capacity +
+           (size_t)entry_count * (sizeof(*filelist_offsets) + sizeof(*filelist_detail_offsets)),
+           without, with);
     file = fopen(csv, "wb");
     assert(file && ftruncate(fileno(file), 1024 * 1024 + 1) == 0);
     assert(fclose(file) == 0);
@@ -994,12 +1021,17 @@ static void ra_game_fixture(const char *root, bool create) {
     }
     assert(snprintf(path, sizeof path, "%s/cubegm/enhanced/ra/rom_identity.json", root) <
            (int)sizeof path);
-    write_fixture(path,
+    char rom[1024], identity[1024];
+    struct stat st;
+    assert(snprintf(rom, sizeof rom, "%s/NoArtwork/Example.nes", root) < (int)sizeof rom);
+    assert(stat(rom, &st) == 0);
+    assert(snprintf(identity, sizeof identity,
         "{\"Other/Rom.NES\":{\"size\":1,\"metadata_only\":true},"
         "\"NoArtwork/Example.nes\":{\"platform\":\"NoArtwork\",\"console_id\":7,"
         "\"game_id\":40,\"ra_hash\":\"0123456789abcdef0123456789abcdef\","
-        "\"method\":\"rcheevos_compatible\",\"size\":0,\"mtime_ns\":1795000000000000000,"
-        "\"metadata_only\":true}}");
+        "\"method\":\"rcheevos_compatible\",\"size\":0,\"mtime_ns\":%lld,"
+        "\"metadata_only\":true}}", (long long)st.st_mtime * 1000000000LL) < (int)sizeof identity);
+    write_fixture(path, identity);
     assert(snprintf(path, sizeof path, "%s/%s/gamepack.json", root, directories[5]) <
            (int)sizeof path);
     write_fixture(path,
@@ -1061,11 +1093,24 @@ int main(int argc, char **argv) {
     char launch_csv[MAX_PATH_LEN];
     assert(snprintf(launch_csv, sizeof launch_csv, "%s/filelist.csv", collection) < (int)sizeof launch_csv);
     write_fixture(launch_csv,
-                  "Rom.ext,Display Title,ChineseTitle,Original Title,Release Date,"
-                  "Developer,Publisher,Genre,Players,Description\n"
-                  "Example.nes,Custom Launch Title,,Example Original,1994,Studio,"
-                  "Publisher,Platformer,2,\"A game with a comma, and a long description.\"\n"
-                  "Second.nes,,,Second Original,,,,,,\n");
+                  "\xef\xbb\xbfRom.ext,Display Title,ChineseTitle,Players,Misc,Description,"
+                  "Developer,ReleaseYear,Publisher,Original Title,Genre,Developer\r\n"
+                  "Example.nes,Custom Launch Title,,2,skip,"
+                  "\"Explore a Pokémon cave, and find a hidden map.\","
+                  "Studio,1994,Publisher,Example Original,Platformer,Duplicate\r\n"
+                  "Second.nes,,,1,,\xff,Valid Studio,,,,\r\n"
+                  "Second.nes,,,9,,Ignored duplicate,,,,,\r\n");
+    assert(snprintf(test_sessions, sizeof test_sessions, "%s/.sessions", argv[1]) <
+           (int)sizeof test_sessions);
+    assert(snprintf(test_playtime, sizeof test_playtime, "%s/.playtime", argv[1]) <
+           (int)sizeof test_playtime);
+    char ledger[2048];
+    assert(snprintf(ledger, sizeof ledger, "1730246400\t120\t%s\n0\t45\t%s\n"
+                    "1730160000\t80\t%s\nnot-a-date\t999\t%s\n50\t999\t/elsewhere/Example.nes\n",
+                    rom, rom, rom, rom) < (int)sizeof ledger);
+    write_fixture(test_sessions, ledger);
+    assert(snprintf(ledger, sizeof ledger, "630\t%s\n380\t%s\n", second_rom, rom) < (int)sizeof ledger);
+    write_fixture(test_playtime, ledger);
     settings_file_cache = 0;
     scan_directory(ROMS_PATH);
     assert(entry_count == 2 && entries[0].is_dir && entries[1].is_dir);
@@ -1107,8 +1152,11 @@ int main(int argc, char **argv) {
     assert(strcmp(original_title + strlen(original_title) + 1, "1994") == 0);
     const char *field = original_title;
     for (int i = 0; i < FILELIST_DESCRIPTION; i++) field += strlen(field) + 1;
-    assert(strcmp(field, "A game with a comma, and a long description.") == 0);
+    assert(strcmp(field, "Explore a Pokémon cave, and find a hidden map.") == 0);
     assert(details_recent_rank(selected_index) == -1);
+    prepare_details_metrics();
+    assert(details_play_stats.runs == 3 && details_play_stats.seconds == 380);
+    assert(details_play_stats.last == 1730246400 && details_play_stats.last_seconds == 120);
     assert(details_cover_transition_frame == 0);
     uint16_t *details_frame = calloc((size_t)SCREEN_WIDTH * SCREEN_HEIGHT, sizeof *details_frame);
     assert(details_frame);
@@ -1133,7 +1181,7 @@ int main(int argc, char **argv) {
     int left_y = HEADER_HEIGHT + UI_S(20) + SCREEN_HEIGHT * 52 / 200;
     assert(details_cover_transition_frame == SYSTEM_CAROUSEL_FRAMES);
     assert(details_frame[left_y * SCREEN_WIDTH + left_x] == red);
-    assert(details_frame[left_y * SCREEN_WIDTH + SCREEN_WIDTH * 3 / 4] == 0);
+    assert(details_frame[left_y * SCREEN_WIDTH + SCREEN_WIDTH * 3 / 4] != red);
     coverflow_images[selected_index - coverflow_first] = NULL;
     int arrow_row = SCREEN_HEIGHT / 2 * SCREEN_WIDTH;
     assert(details_frame[arrow_row + UI_S(8)] == 0);
@@ -1145,8 +1193,16 @@ int main(int argc, char **argv) {
     assert(selected_index == 1 && strcmp(enhanced_settings_navigation.state.game_id, "Second.nes") == 0);
     prepare_enhanced_library(false);
     assert(strcmp(details_title_text, "Second") == 0);
+    prepare_details_metrics();
+    assert(details_play_stats.seconds == 630 && !details_play_stats.runs &&
+           !details_play_stats.last && !details_play_stats.last_seconds);
     assert(filelist_detail_offsets[1]);
-    assert(!strcmp(filelist_details + filelist_detail_offsets[1] - 1, "Second Original"));
+    const char *second_detail = filelist_details + filelist_detail_offsets[1] - 1;
+    for (int i = 0; i < FILELIST_DEVELOPER; i++) second_detail += strlen(second_detail) + 1;
+    assert(!strcmp(second_detail, "Valid Studio"));
+    for (int i = FILELIST_DEVELOPER; i < FILELIST_DESCRIPTION; i++)
+        second_detail += strlen(second_detail) + 1;
+    assert(!*second_detail);
     memset(details_frame, 0, (size_t)SCREEN_WIDTH * SCREEN_HEIGHT * sizeof *details_frame);
     render_enhanced_game_details(details_frame);
     assert(details_frame[arrow_row + UI_S(14) - UI_S(6)] == COLOR_TEXT);
@@ -1180,6 +1236,17 @@ int main(int argc, char **argv) {
     assert(enhanced_achievements_view() && details_achievement_index == 1);
     press(FROG_BTN_B);
     assert(enhanced_details_view() && selected_index == 0);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    prepare_details_achievements(ROMS_PATH);
+    assert(selected_index == 1 && !details_achievements_valid);
+    assert(strcmp(details_title_text, "Second") == 0);
+    press(FROG_BTN_L2);
+    assert(enhanced_details_view());
+    press(FROG_BTN_LEFT);
+    prepare_enhanced_library(false);
+    prepare_details_achievements(ROMS_PATH);
+    assert(selected_index == 0 && details_achievements_valid);
     ra_game_fixture(ROMS_PATH, false);
     free(details_frame);
     press(FROG_BTN_START);

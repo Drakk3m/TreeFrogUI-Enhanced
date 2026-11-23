@@ -26,7 +26,8 @@ typedef struct {
 } RaGame;
 
 /* Load one hash-bound, metadata-only game pack from an SD root. The ROM path
- * must be inside root and match rom_identity.json. No writes or networking. */
+ * must be inside root and match rom_identity.json. No writes or networking.
+ * The ROM content hash is not recomputed here. */
 bool ra_game_read(const char *root, const char *rom_path, const char *platform,
                   RaGame *out);
 

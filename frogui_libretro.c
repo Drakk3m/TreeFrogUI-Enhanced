@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/wait.h>
 
 #include "libretro.h"
@@ -3364,20 +3365,39 @@ static void enter_favourites_view(void) {
     scroll_offset = 0;
 }
 
+#define PLAY_SESSIONS_PATH "/mnt/sdcard/frogui/play_sessions.txt"
+
+static const char *parse_play_session(char *line, time_t *when, long *seconds) {
+    char *duration = strchr(line, '\t');
+    if (!duration) return NULL;
+    *duration++ = '\0';
+    char *path = strchr(duration, '\t');
+    if (!path) return NULL;
+    *path++ = '\0';
+    path[strcspn(path, "\r\n")] = '\0';
+    char *end;
+    errno = 0;
+    long stamp = strtol(line, &end, 10);
+    if (errno || end == line || *end || stamp < 0) return NULL;
+    long length = strtol(duration, &end, 10);
+    if (errno || end == duration || *end || length <= 0 || !*path) return NULL;
+    *when = (time_t)stamp;
+    *seconds = length;
+    return path;
+}
+
 /* Activity Tracker reads the complete durable picoarch playtime ledger, so it
  * is not limited to the ten-item Recents list. */
 static void enter_activity_view(void) {
-	FILE *f = fopen("/mnt/sdcard/frogui/play_sessions.txt", "r");
+	FILE *f = fopen(PLAY_SESSIONS_PATH, "r");
 	char line[MAX_PATH_LEN + 96];
 	activity_count = 0;
 	activity_has_dates = 0;
 	while (f && fgets(line, sizeof line, f)) {
-		char *a = strchr(line, '\t'); if (!a) continue;
-		*a++ = '\0'; char *b = strchr(a, '\t'); if (!b) continue;
-		*b++ = '\0'; b[strcspn(b, "\r\n")] = '\0';
-		time_t when = (time_t)atol(line); long seconds = atol(a);
-		/* RTC may be unset (epoch 0); duration and append order are still valid. */
-		if (when < 0 || seconds <= 0 || !b[0]) continue;
+		time_t when;
+		long seconds;
+		const char *b = parse_play_session(line, &when, &seconds);
+		if (!b) continue;
 		int found = -1;
 		for (int i = 0; i < activity_count; i++)
 			if (!strcmp(activity_paths[i], b)) { found = i; break; }
@@ -6595,24 +6615,120 @@ static void render_details_description(uint16_t *fb, const char *description,
     }
 }
 
+typedef struct {
+    time_t last;
+    long seconds, last_seconds;
+    int runs;
+} DetailsPlayStats;
+
+static DetailsPlayStats details_play_stats;
+static unsigned details_stats_generation;
+static int details_stats_index = -1;
+
+static void prepare_details_metrics(void) {
+    if (!enhanced_details_view() && !enhanced_achievements_view()) {
+        details_stats_index = -1;
+        return;
+    }
+    if (details_stats_index == selected_index &&
+        details_stats_generation == filelist_scan_generation) return;
+    details_stats_index = selected_index;
+    details_stats_generation = filelist_scan_generation;
+    details_play_stats = (DetailsPlayStats){0};
+    if (selected_index < 0 || selected_index >= entry_count || entries[selected_index].is_dir) return;
+
+    char path[MAX_PATH_LEN];
+    int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[selected_index].name);
+    if (n < 0 || (size_t)n >= sizeof path) return;
+    FILE *file = fopen(PLAY_SESSIONS_PATH, "r");
+    char line[MAX_PATH_LEN + 96];
+    while (file && fgets(line, sizeof line, file)) {
+        time_t when;
+        long seconds;
+        const char *session_path = parse_play_session(line, &when, &seconds);
+        if (!session_path || strcmp(session_path, path)) continue;
+        if (details_play_stats.runs < INT_MAX) details_play_stats.runs++;
+        if (seconds <= LONG_MAX - details_play_stats.seconds)
+            details_play_stats.seconds += seconds;
+        if (when >= details_play_stats.last) {
+            details_play_stats.last = when;
+            details_play_stats.last_seconds = seconds;
+        }
+    }
+    if (file) fclose(file);
+    long recorded_total = playtime_lookup(path);
+    if (recorded_total > 0) details_play_stats.seconds = recorded_total;
+}
+
+static void format_details_duration(char *out, size_t size, long seconds) {
+    if (seconds >= 3600) snprintf(out, size, "%ldh %02ldm", seconds / 3600, seconds / 60 % 60);
+    else if (seconds >= 60) snprintf(out, size, "%ldm %02lds", seconds / 60, seconds % 60);
+    else snprintf(out, size, "%lds", seconds);
+}
+
 static void render_details_information(uint16_t *fb, int index, int y) {
     const int x = SCREEN_WIDTH * 44 / 100;
     const int width = SCREEN_WIDTH - x - UI_S(30);
-    const int step = font_get_size() + UI_S(5);
+    const int step = font_get_size() + UI_S(3);
     const int bottom = SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(34);
     char line[FILELIST_MAX_FIELD + 84];
-    int recent = details_recent_rank(index);
-    if (recent >= 0) {
-        const char *status = recent == 0 ? tr_or("enhanced.details.last_played", "Last played")
-                                         : tr_or("enhanced.details.in_recents", "In Recents");
-        render_details_text(fb, status, x, y, width, step, COLOR_HEADER);
+    char date[16];
+    struct tm local;
+    if (details_play_stats.last > 0 && localtime_r(&details_play_stats.last, &local) &&
+        strftime(date, sizeof date, "%Y-%m-%d", &local)) {
+        snprintf(line, sizeof line, "%s: %s",
+                 tr_or("enhanced.details.last_played", "Last played"), date);
+        render_details_text(fb, line, x, y, width, step, COLOR_HEADER);
         y += step;
+    } else {
+        int recent = details_recent_rank(index);
+        if (recent >= 0) {
+            const char *status = recent == 0 ? tr_or("enhanced.details.last_played", "Last played")
+                                             : tr_or("enhanced.details.in_recents", "In Recents");
+            render_details_text(fb, status, x, y, width, step, COLOR_HEADER);
+            y += step;
+        }
     }
 
+    const char *platform = enhanced_settings_navigation.state.platform_id;
+    const char *dot = strrchr(entries[index].name, '.');
+    char format[24] = "";
+    if (dot && dot != entries[index].name && dot[1]) {
+        for (size_t i = 0; dot[i + 1] && i < sizeof format - 1; i++)
+            format[i] = (char)toupper((unsigned char)dot[i + 1]);
+    }
+    const char *platform_name = system_display_name(*platform ? platform : get_basename(current_path));
+    snprintf(line, sizeof line, "%s%s%s", platform_name, *format ? " / " : "", format);
+    render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
+    y += step;
     snprintf(line, sizeof line, "%s: %s", tr_or("enhanced.details.rom", "ROM"),
              entries[index].name);
     render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
     y += step;
+
+    if (details_play_stats.seconds > 0) {
+        char total[32], last[32];
+        format_details_duration(total, sizeof total, details_play_stats.seconds);
+        snprintf(line, sizeof line, "%s: %s",
+                 tr_or("enhanced.details.playtime", "Total"), total);
+        if (details_play_stats.runs > 0) {
+            size_t length = strlen(line);
+            const char *unit = details_play_stats.runs == 1
+                             ? tr_or("enhanced.details.session", "session")
+                             : tr_or("enhanced.details.sessions", "sessions");
+            snprintf(line + length, sizeof line - length, " / %d %s",
+                     details_play_stats.runs, unit);
+        }
+        render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
+        y += step;
+        if (details_play_stats.last_seconds > 0) {
+            format_details_duration(last, sizeof last, details_play_stats.last_seconds);
+            snprintf(line, sizeof line, "%s: %s",
+                     tr_or("enhanced.details.last_session", "Last session"), last);
+            render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
+            y += step;
+        }
+    }
     uint32_t offset = filelist_detail_offsets ? filelist_detail_offsets[index] : 0;
     if (!offset) return;
 
@@ -6769,6 +6885,9 @@ static void render_enhanced_achievements(uint16_t *fb) {
     render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
     y += step;
     render_details_text(fb, achievement->title, label_x, y, label_width, step, COLOR_TEXT);
+    y += step;
+    snprintf(label, sizeof label, "%s: %d", tr_or("enhanced.details.ra_game_id", "RA game ID"), details_achievements.game_id);
+    render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
     y += step;
     snprintf(label, sizeof label, "%s: %d",
              tr_or("enhanced.details.achievement_points", "Points"), achievement->points);
@@ -8089,6 +8208,7 @@ void retro_unload_game(void) {
     free_thumbnail(&details_badge);
     details_badge_game = -1;
     details_achievement_game = -1;
+    details_stats_index = -1;
     details_achievements_valid = false;}
 
 static void render_settings_menu(void) {
@@ -8552,6 +8672,7 @@ void retro_run(void) {
     if (enhanced_theme_changed) load_ra_trophy();
     prepare_enhanced_grid();
     prepare_enhanced_library(enhanced_theme_changed);
+    prepare_details_metrics();
     prepare_details_achievements(SDCARD_BASE);
     prepare_details_badge();
     RenderThemeScreen theme_screen = (settings_menu_active || viewing_info) ? RENDER_SCREEN_SETTINGS :

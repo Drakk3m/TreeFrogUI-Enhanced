@@ -2,6 +2,7 @@
 #include "../ra_game.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,7 +34,8 @@ int main(void) {
     snprintf(identity, sizeof identity, "%s/cubegm/enhanced/ra/rom_identity.json", root);
     char identity_json[2048];
     snprintf(identity_json, sizeof identity_json,
-             "{\"roms/nes/Test.nes\":{\"platform\":\"nes\",\"console_id\":1,\"game_id\":42,\"ra_hash\":\"0123456789abcdef0123456789abcdef\",\"method\":\"rcheevos\",\"size\":%lld,\"mtime_ns\":999999999999}}", (long long)st.st_size);
+             "{\"roms/nes/Test.nes\":{\"platform\":\"nes\",\"console_id\":1,\"game_id\":42,\"ra_hash\":\"0123456789abcdef0123456789abcdef\",\"method\":\"rcheevos\",\"size\":%lld,\"mtime_ns\":%lld}}", (long long)st.st_size,
+             ((long long)st.st_mtime + 2) * 1000000000LL);
     write_text(identity, identity_json);
     snprintf(pack, sizeof pack, "%s/cubegm/enhanced/ra/cache/1/0123456789abcdef0123456789abcdef/gamepack.json", root);
     write_text(pack, "{\"schema_version\":1,\"console_id\":1,\"game_id\":42,\"ra_hash\":\"0123456789abcdef0123456789abcdef\",\"achievements\":[{\"id\":7,\"title\":\"First\",\"description\":\"Done\",\"points\":5,\"badge\":\"badge.png\",\"definition\":\"0=1\"}]}");
@@ -43,9 +45,16 @@ int main(void) {
     assert(game.achievements[0].id == 7 && game.achievements[0].points == 5);
     assert(!strcmp(game.achievements[0].title, "First"));
     assert(!ra_game_read(root, rom, "snes", &game));
-    write_text(rom, "replacement");
+    write_text(rom, "bad-data");
+    struct timespec changed[2] = {{.tv_sec = st.st_mtime + 60}, {.tv_sec = st.st_mtime + 60}};
+    assert(utimensat(AT_FDCWD, rom, changed, 0) == 0);
+    assert(!ra_game_read(root, rom, "nes", &game));
+    write_text(rom, "too-long-rom");
+    changed[0].tv_sec = changed[1].tv_sec = st.st_mtime;
+    assert(utimensat(AT_FDCWD, rom, changed, 0) == 0);
     assert(!ra_game_read(root, rom, "nes", &game));
     write_text(rom, "rom-data");
+    assert(utimensat(AT_FDCWD, rom, changed, 0) == 0);
     write_text(pack, "{\"schema_version\":1,\"console_id\":1,\"game_id\":42,"
                      "\"ra_hash\":\"0123456789abcdef0123456789abcdef\","
                      "\"achievements\":[{\"id\":7,\"title\":\"First\"},"
