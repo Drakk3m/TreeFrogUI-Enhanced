@@ -6,7 +6,7 @@ The local ROM Studio v87.9.2 exporter (studio/ra_sd_export.py) and existing SD b
 
 The unversioned rom_identity.json object is keyed by a path relative to the SD root. Values contain platform, console_id, game_id, ra_hash, method, size, mtime_ns and metadata_only. The associated pack is cache/<console_id>/<ra_hash>/gamepack.json. Studio validates schema_version 1 and the console ID, game ID and canonical RA hash before export. The observed achievement entries contain id, title, description, points and badge. Points are properties of definitions. Neither these entries nor the exported profile report earned counts, earned points, hardcore status, unlock dates or completion percentages. Studio's PC profile cache and separate journal handling do not establish exported global unlock statistics or an authoritative console aggregate. The displayed muted zero is a requested visual placeholder for unknown progress. It is not sourced from the profile and must be replaced only with an authoritative earned count. FrogUI performs no count traversal.
 
-The live Enhanced Home renderer already provides a reserved upper-right area between its status row and ribbon. Render the read-only profile there, using the existing font and native RGB565 icon scaler. Validate across a frontend initialization boundary. Use a native neutral glyph if valid profile data has no usable avatar. A missing, invalid or unsupported profile hides the component. No new navigation destination and no cache writes or network calls.
+The live Enhanced Home renderer already provides a reserved upper-right area between its status row and ribbon. Render the avatar and gamertag there, using the existing font and native RGB565 icon scaler. Place the trophy and provisional count at the upper left on the same row. Validate across a frontend initialization boundary. Use a native neutral glyph if valid profile data has no usable avatar. A missing, invalid or unsupported profile hides the component. No new navigation destination and no cache writes or network calls.
 
 ## Resource limits and verification
 
@@ -20,7 +20,7 @@ The parser accepted the local Studio profile without printing its private conten
 
 With the console powered off, back up cubegm/cores/frogui_libretro.so on the separate test SD. Install the candidate and verify its checksum. Use a ROM Studio export with profile.json and avatar.png under cubegm/enhanced/ra.
 
-1. Check the gamertag, avatar, trophy and muted placeholder zero in the upper right. Verify no overlap with the ribbon or battery, including with reduced motion and long names.
+1. Check the avatar and gamertag in the upper right and the trophy and muted placeholder zero in the upper left. Verify no overlap with the ribbon or battery, including with reduced motion and long names.
 2. Test the missing or invalid profile and avatar cases on the test SD. A valid profile without usable art should show a neutral icon. Check that Classic has its normal Home.
 3. Traverse Recents, Apps and Settings. Open a platform, verify P5.1 CSV titles, enter Details and launch a known game. Confirm the frontend and profile return.
 4. To roll back, power off and restore the saved binary. The RA export can stay on the SD. Use the accepted P5 hotfix for a physically accepted rollback point.

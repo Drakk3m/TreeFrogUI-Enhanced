@@ -5963,13 +5963,33 @@ static void render_ra_home(uint16_t *fb) {
     int text = font_measure_text(ra_home_profile.username);
     int max_text = SCREEN_WIDTH / 3;
     if (text > max_text) text = max_text;
-    /* Reserved visual value until the export provides earned progress. */
     const char *pending_count = "0";
     int count_width = font_measure_text(pending_count);
-    int left = right - icon - gap * 5 - text - trophy - count_width;
-    render_rounded_rect_alpha(fb, left, y, right - left, icon + gap,
+    int left_width = gap + trophy + gap + count_width + gap;
+    int right_width = gap + icon + gap + text + gap;
+    int right_left = right - right_width;
+
+    render_rounded_rect_alpha(fb, UI_S(24), y, left_width, icon + gap,
                               gap, COLOR_BG, 216);
-    int ax = left + gap, ay = y + gap / 2;
+    render_rounded_rect_alpha(fb, right_left, y, right_width, icon + gap,
+                              gap, COLOR_BG, 216);
+
+    int cup = UI_S(24) + gap;
+    int top = y + (icon + gap - trophy) / 2;
+    int line = UI_S(2);
+    render_rounded_rect(fb, cup + line, top, trophy - line * 2,
+                        trophy * 2 / 3, line, COLOR_TEXT);
+    render_fill_rect(fb, cup, top + line, trophy, line, COLOR_TEXT);
+    render_fill_rect(fb, cup + (trophy - line) / 2, top + trophy / 2,
+                     line, trophy / 2, COLOR_TEXT);
+    render_fill_rect(fb, cup + line, top + trophy - line,
+                     trophy - line * 2, line, COLOR_TEXT);
+    int count_x = cup + trophy + gap;
+    int ty = y + (icon + gap - font_get_size()) / 2;
+    font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, count_x, ty,
+                   pending_count, COLOR_DISABLED);
+
+    int ax = right_left + gap, ay = y + gap / 2;
     if (ra_avatar_icon.pixels) {
         system_icon_draw(fb, &ra_avatar_icon, ax, ay, icon, icon);
     } else {
@@ -5981,20 +6001,9 @@ static void render_ra_home(uint16_t *fb) {
                             icon - UI_S(10), icon / 3, UI_S(5), COLOR_TEXT);
     }
     int tx = ax + icon + gap;
-    int ty = y + (icon + gap - font_get_size()) / 2;
     font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, tx, ty,
-                           ra_home_profile.username, COLOR_TEXT, tx, y, text, icon + gap);
-    int count_x = right - gap - count_width;
-    int cup = count_x - gap - trophy;
-    font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, count_x, ty,
-                   pending_count, COLOR_DISABLED);
-    int top = y + (icon + gap - trophy) / 2;
-    int line = UI_S(2);
-    render_rounded_rect(fb, cup + line, top, trophy - line * 2, trophy * 2 / 3,
-                        line, COLOR_TEXT);
-    render_fill_rect(fb, cup, top + line, trophy, line, COLOR_TEXT);
-    render_fill_rect(fb, cup + (trophy - line) / 2, top + trophy / 2, line, trophy / 2, COLOR_TEXT);
-    render_fill_rect(fb, cup + line, top + trophy - line, trophy - line * 2, line, COLOR_TEXT);
+                           ra_home_profile.username, COLOR_TEXT, tx, y,
+                           text, icon + gap);
 }
 
 static void render_enhanced_home(uint16_t *fb) {

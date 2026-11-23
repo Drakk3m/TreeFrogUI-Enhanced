@@ -922,13 +922,17 @@ static void test_ra_home(const char *root) {
     assert(frame);
     for (int i = 0; i < 4; i++) render_ra_home(frame);
     size_t painted = 0;
+    bool left_pill = false, right_pill = false, central_gap_clear = true;
     for (int y = 0; y < 480; y++)
         for (int x = 0; x < 640; x++)
             if (frame[y * 640 + x]) {
-                assert(y >= 39 && y < 82 && x >= 310);
+                assert(y >= 39 && y < 82);
+                if (x < 120) left_pill = true;
+                if (x >= 310) right_pill = true;
+                if (x >= 120 && x < 310) central_gap_clear = false;
                 painted++;
             }
-    assert(painted > 0);
+    assert(painted > 0 && left_pill && right_pill && central_gap_clear);
     free(frame);
     load_ra_home(directory);
     assert(!ra_home_profile_valid && !ra_avatar_icon.pixels);
