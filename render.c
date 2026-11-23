@@ -1006,8 +1006,8 @@ void render_thumbnail(uint16_t *framebuffer, const Thumbnail *thumb) {
   }
 }
 
-void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,
-                                int x, int y, int width, int height) {
+void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
+                                int x, int y, int width, int height, float projection) {
   if (!framebuffer || !thumb || !thumb->data || thumb->width <= 0 ||
       thumb->height <= 0 || width <= 0 || height <= 0) return;
   int dw = width, dh = height;
@@ -1016,6 +1016,7 @@ void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,
   } else {
     dh = width * thumb->height / thumb->width;
   }
+  dw = (int)(dw * projection);
   if (dw < 1) dw = 1;
   if (dh < 1) dh = 1;
   int left = x + (width - dw) / 2;
@@ -1041,6 +1042,11 @@ void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,
       }
     }
   }
+}
+
+void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,
+                                int x, int y, int width, int height) {
+  render_thumbnail_projected(framebuffer, thumb, x, y, width, height, 1.0f);
 }
 
 typedef struct {
