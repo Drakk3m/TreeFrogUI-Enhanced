@@ -170,6 +170,7 @@ int load_thumbnail(const char *png_path, Thumbnail *thumb);
 int load_game_artwork(const char *game_path, ArtworkKind kind,
                       Thumbnail *thumb);
 /* Same artwork conventions, using bounded file and decode budgets for CoverFlow. */
+int load_bounded_png_thumbnail(const char *path, Thumbnail *thumb);
 int load_game_artwork_bounded(const char *game_path, ArtworkKind kind, Thumbnail *thumb);
 
 // Load raw RGB565 file (fallback) - converts to ARGB8888

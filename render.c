@@ -770,7 +770,7 @@ static FILE *open_bounded_artwork(const char *path, size_t limit, size_t *length
   return file;
 }
 
-static unsigned char *load_bounded_image(const char *path, int *w, int *h) {
+static unsigned char *load_bounded_image(const char *path, int *w, int *h, bool png_only) {
   size_t size;
   FILE *file = open_bounded_artwork(path, THEME_RESOURCE_FILE_MAX, &size);
   if (!file)
@@ -783,7 +783,7 @@ static unsigned char *load_bounded_image(const char *path, int *w, int *h) {
     bool jpeg = size >= 2 && encoded[0] == 0xff && encoded[1] == 0xd8;
     bool bmp = size >= 2 && encoded[0] == 'B' && encoded[1] == 'M';
     int channels;
-    if ((png || jpeg || bmp) &&
+    if ((png || (!png_only && (jpeg || bmp))) &&
         stbi_info_from_memory(encoded, (int)size, w, h, &channels))
       pixels = banner_decode_enhanced_image(encoded, (int)size, *w, *h, 4);
   }
@@ -796,9 +796,9 @@ static unsigned char *load_bounded_image(const char *path, int *w, int *h) {
 // static RGB565 buffer (aspect-preserving, capped at 250x250). Alpha is kept
 // in a side buffer and composited per-pixel at render time, so transparent
 // boxart shows whatever is actually behind it (theme/background image).
-static int load_image_thumbnail(const char *path, Thumbnail *thumb, bool bounded) {
+static int load_image_thumbnail(const char *path, Thumbnail *thumb, bool bounded, bool png_only) {
   int w, h, ch;
-  unsigned char *img = bounded ? load_bounded_image(path, &w, &h)
+  unsigned char *img = bounded ? load_bounded_image(path, &w, &h, png_only)
                                : stbi_load(path, &w, &h, &ch, 4);
   if (!img)
     return 0;
@@ -839,6 +839,10 @@ static int load_image_thumbnail(const char *path, Thumbnail *thumb, bool bounded
   return 1;
 }
 
+int load_bounded_png_thumbnail(const char *path, Thumbnail *thumb) {
+  return load_image_thumbnail(path, thumb, true, true);
+}
+
 static int load_raw_rgb565_mode(const char *path, Thumbnail *thumb, bool bounded);
 
 static int load_thumbnail_mode(const char *base_path, Thumbnail *thumb, bool bounded) {
@@ -854,7 +858,7 @@ static int load_thumbnail_mode(const char *base_path, Thumbnail *thumb, bool bou
   static const char *exts[] = {".png", ".jpg", ".jpeg", ".bmp", NULL};
   for (int i = 0; exts[i]; i++) {
     snprintf(p, sizeof p, "%s%s", base_path, exts[i]);
-    if ((bounded || access(p, F_OK) == 0) && load_image_thumbnail(p, thumb, bounded))
+    if ((bounded || access(p, F_OK) == 0) && load_image_thumbnail(p, thumb, bounded, false))
       return 1;
   }
   snprintf(p, sizeof p, "%s.rgb565", base_path);
