@@ -170,6 +170,7 @@ int load_thumbnail(const char *png_path, Thumbnail *thumb);
 int load_game_artwork(const char *game_path, ArtworkKind kind,
                       Thumbnail *thumb);
 /* Same artwork conventions, using bounded file and decode budgets for CoverFlow. */
+int load_bounded_screenshot_image(const char *path, Thumbnail *thumb);
 int load_bounded_png_thumbnail(const char *path, Thumbnail *thumb);
 int load_game_artwork_bounded(const char *game_path, ArtworkKind kind, Thumbnail *thumb);
 
@@ -182,6 +183,8 @@ void free_thumbnail(Thumbnail *thumb);
 // Draw thumbnail in the thumbnail area
 void render_thumbnail(uint16_t *framebuffer, const Thumbnail *thumb);
 /* Aspect-fit the image, then project its width by a factor in [0, 1]. */
+void render_thumbnail_skewed(uint16_t *framebuffer, const Thumbnail *thumb,
+                             int x, int y, int width, int height, int skew);
 void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
                                 int x, int y, int width, int height, float projection);
 void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,

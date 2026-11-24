@@ -1,4 +1,13 @@
 {
+  "enhanced.favorites.actions": "A Details   B Back",
+  "enhanced.favorites.empty": "No favorites yet",
+  "enhanced.favorites.tip": "Use Y in Game Details to add a favorite",
+  "enhanced.favorite.add": "Y Add favorite",
+  "enhanced.favorite.remove": "Y Remove favorite",
+  "enhanced.recents.empty": "No recent games",
+  "enhanced.recents.actions": "A Play   X Details   B Back",
+  "enhanced.recents.back": "B Back",
+  "enhanced.recents.missing": "ROM unavailable",
   "enhanced.apps.empty": "No applications available",
   "enhanced.apps.controls": "A Open    B Back",
   "enhanced.settings.range_controls": "Left/Right Adjust   B Back",

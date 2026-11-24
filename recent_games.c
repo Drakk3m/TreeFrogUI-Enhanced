@@ -1,4 +1,5 @@
 #include "recent_games.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -19,7 +20,8 @@ void recent_games_load(void) {
     }
     
     recent_count = 0;
-    char line[512];
+    char line[sizeof ((RecentGame *)0)->core_name +
+              sizeof ((RecentGame *)0)->game_name + sizeof ((RecentGame *)0)->full_path + 2];
     
     while (fgets(line, sizeof(line), fp) && recent_count < MAX_RECENT_GAMES) {
         // Remove newline
@@ -70,42 +72,26 @@ void recent_games_save(void) {
 }
 
 void recent_games_add(const char *core_name, const char *game_name, const char *full_path) {
-    // Check if game already exists
     int existing_index = -1;
     for (int i = 0; i < recent_count; i++) {
-        if (strcmp(recent_games[i].core_name, core_name) == 0 && 
-            strcmp(recent_games[i].game_name, game_name) == 0) {
-            existing_index = i;
-            break;
-        }
+        const RecentGame *record = &recent_games[i];
+        bool same = full_path[0] && record->full_path[0]
+                  ? !strcmp(record->full_path, full_path)
+                  : !strcmp(record->core_name, core_name) && !strcmp(record->game_name, game_name);
+        if (same) { existing_index = i; break; }
     }
-    
-    // If exists, move to top
-    if (existing_index >= 0) {
-        RecentGame temp = recent_games[existing_index];
-        for (int i = existing_index; i > 0; i--) {
-            recent_games[i] = recent_games[i - 1];
-        }
-        recent_games[0] = temp;
-    } else {
-        // Add new game at top
-        if (recent_count < MAX_RECENT_GAMES) {
-            recent_count++;
-        }
-        
-        // Shift all games down
-        for (int i = recent_count - 1; i > 0; i--) {
-            recent_games[i] = recent_games[i - 1];
-        }
-        
-        // Add new game at top
-        strncpy(recent_games[0].core_name, core_name, sizeof(recent_games[0].core_name) - 1);
-        strncpy(recent_games[0].game_name, game_name, sizeof(recent_games[0].game_name) - 1);
-        strncpy(recent_games[0].full_path, full_path, sizeof(recent_games[0].full_path) - 1);
-        snprintf(recent_games[0].display_name, sizeof(recent_games[0].display_name),
-                "%s (%s)", game_name, core_name);
+    if (existing_index < 0) {
+        if (recent_count < MAX_RECENT_GAMES) recent_count++;
+        existing_index = recent_count - 1;
     }
-    
+    for (int i = existing_index; i > 0; i--)
+        recent_games[i] = recent_games[i - 1];
+    RecentGame *top = &recent_games[0];
+    snprintf(top->core_name, sizeof top->core_name, "%s", core_name);
+    snprintf(top->game_name, sizeof top->game_name, "%s", game_name);
+    snprintf(top->full_path, sizeof top->full_path, "%s", full_path);
+    snprintf(top->display_name, sizeof top->display_name, "%s (%s)", game_name, core_name);
+
     recent_games_save();
 }
 

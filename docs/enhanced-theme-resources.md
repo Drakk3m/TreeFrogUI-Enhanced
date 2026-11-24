@@ -162,3 +162,7 @@ path=icons/usb.png
 ~~~
 
 PNG alpha and aspect ratio are preserved. Files follow the ordinary icon limits, with decoded artwork retained at up to 160 pixels per edge in the existing icon cache. The Apps view resolves visible artwork outside drawing and uses native fallback symbols for missing or invalid resources. Existing packs need no new files.
+
+## Favorites ribbon icon
+
+Enhanced Home reuses the optional platform.favourites.icon resource for the Favorites destination. It is a virtual destination and has no ROM directory. The resource uses existing icon limits and aspect-fit alpha drawing. If the resource is absent or cannot be decoded, Home uses its native star symbol. The empty collection uses the same native star silhouette and themed text colors. Existing themes need no changes.

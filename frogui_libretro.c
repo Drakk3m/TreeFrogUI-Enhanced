@@ -3417,7 +3417,49 @@ static bool start_in_recents(void) {
 
 /* Switch the browser into the recents view (used by the Recents entry and, when
  * "Start in Recents" is on, at startup). */
+static char favorite_removed_path[MAX_PATH_LEN];
+static bool p9_rom_available;
+static bool selected_favorite;
+
+static const char *collection_game_path(int index) {
+    if (index < 0 || index >= entry_count) return NULL;
+    if (viewing_favourites) {
+        if (favorite_removed_path[0] && index == selected_index) return favorite_removed_path;
+        if (index < favorites_get_count()) {
+            const char *path = favorites_get_list()[index].full_path;
+            return *path ? path : NULL;
+        }
+    } else if (viewing_recents && index < recent_games_get_count()) {
+        const char *path = recent_games_get_list()[index].full_path;
+        return *path ? path : NULL;
+    }
+    return NULL;
+}
+
+static bool selected_game_path(int index, char *out, size_t size) {
+    if (index < 0 || index >= entry_count) return false;
+    int n;
+    if (viewing_favourites || viewing_recents) {
+        const char *path = collection_game_path(index);
+        if (!path) return false;
+        n = snprintf(out, size, "%s", path);
+    } else {
+        n = snprintf(out, size, "%s/%s", current_path, entries[index].name);
+    }
+    return n > 0 && (size_t)n < size;
+}
+
+static bool collection_platform(char *out, size_t size, const char *path) {
+    size_t root = strlen(ROMS_PATH);
+    if (!path || strncmp(path, ROMS_PATH, root) || path[root] != '/') return false;
+    const char *platform = get_console_folder(path);
+    if (!platform || !*platform) return false;
+    int n = snprintf(out, size, "%s", platform);
+    return n > 0 && (size_t)n < size;
+}
+
 static void enter_recents_view(void) {
+    filelist_scan_generation++;
     const RecentGame *rg = recent_games_get_list();
     int rc = recent_games_get_count();
     while (rc > entry_capacity) {
@@ -3439,6 +3481,8 @@ static void enter_recents_view(void) {
 }
 
 static void enter_favourites_view(void) {
+    filelist_scan_generation++;
+    favorite_removed_path[0] = 0;
     const FavoriteGame *list = favorites_get_list();
     int count = favorites_get_count();
     while (count > entry_capacity) {
@@ -3705,6 +3749,7 @@ static int activity_marquee_active(void) {
 
 static int games_tab_selected = 0, games_tab_scroll = 0;
 static int recents_tab_selected = 0;
+static char recents_tab_path[MAX_PATH_LEN];
 static int apps_tab_selected = 0;
 static unsigned apps_scan_generation;
 static DirEntry *games_tab_entries = NULL;
@@ -3857,14 +3902,17 @@ static void switch_main_tab(int target) {
 
     ui_transition_start(target > old ? 1 : -1);
     if (old == MAIN_TAB_GAMES) {
-        if (target != MAIN_TAB_SETTINGS || enhanced_settings_navigation.state.screen != NAV_SETTINGS ||
-            strcmp(current_path, ROMS_PATH) == 0) {
+        if (!viewing_favourites && (target != MAIN_TAB_SETTINGS ||
+            enhanced_settings_navigation.state.screen != NAV_SETTINGS ||
+            strcmp(current_path, ROMS_PATH) == 0)) {
             games_tab_selected = selected_index;
             games_tab_scroll = scroll_offset;
             save_games_tab_entries();
         }
     } else if (old == MAIN_TAB_RECENTS) {
         recents_tab_selected = selected_index;
+        const char *path = collection_game_path(selected_index);
+        snprintf(recents_tab_path, sizeof recents_tab_path, "%s", path ? path : "");
     } else if (old == MAIN_TAB_APPS) {
         apps_tab_selected = selected_index;
     } else {
@@ -3884,6 +3932,12 @@ static void switch_main_tab(int target) {
             selected_index = recents_tab_selected;
             if (selected_index >= entry_count) selected_index = entry_count - 1;
             if (selected_index < 0) selected_index = 0;
+            if (settings_graphical_home && recents_tab_path[0]) {
+                for (int i = 0; i < entry_count; i++) {
+                    const char *path = collection_game_path(i);
+                    if (path && !strcmp(path, recents_tab_path)) { selected_index = i; break; }
+                }
+            }
         }
     } else if (target == MAIN_TAB_GAMES) {
         settings_menu_active = false;
@@ -3937,6 +3991,9 @@ static void switch_main_tab(int target) {
     }
 }
 
+static char settings_collection_rom[MAX_PATH_LEN];
+static int settings_collection_index;
+
 static const NavCatalog details_ra_catalog;
 
 static void open_enhanced_settings(void) {
@@ -3944,12 +4001,25 @@ static void open_enhanced_settings(void) {
     NavScreen previous_screen = navigation->state.screen;
     bool from_game = previous_screen == NAV_GAME_DETAILS ||
                      previous_screen == NAV_ACHIEVEMENTS_GALLERY;
+    settings_collection_rom[0] = 0;
+    settings_collection_index = selected_index;
+    const char *collection_rom = collection_game_path(selected_index);
+    if (collection_rom)
+        snprintf(settings_collection_rom, sizeof settings_collection_rom, "%s", collection_rom);
     nav_model_init(navigation, 1);
     snprintf(enhanced_settings_directory, sizeof enhanced_settings_directory,
              "%s", current_path);
     const char *name = selected_index >= 0 && selected_index < entry_count
                      ? entries[selected_index].name : "";
-    if (viewing_recents || viewing_apps) {
+    if ((viewing_recents || viewing_favourites) && from_game) {
+        const char *path = collection_game_path(selected_index);
+        collection_platform(navigation->state.platform_id, NAV_ID_MAX, path);
+        snprintf(navigation->state.game_id, NAV_ID_MAX, "%s", name);
+        navigation->state.screen = previous_screen;
+        navigation->state.details_return = viewing_recents ? NAV_RECENTS : NAV_FAVORITES;
+    } else if (viewing_favourites) {
+        navigation->state.screen = NAV_FAVORITES;
+    } else if (viewing_recents || viewing_apps) {
         navigation->state.screen = viewing_recents ? NAV_RECENTS : NAV_APPS;
         enhanced_settings_recents_fullscreen = game_switcher_fullscreen;
         snprintf(navigation->state.game_id, NAV_ID_MAX, "%s", name);
@@ -4003,6 +4073,41 @@ static void restore_settings_listing(void) {
         viewing_apps = false;
         apps_browsing = false;
         viewing_activity = false;
+
+        bool game_view = navigation->state.screen == NAV_GAME_DETAILS ||
+                         navigation->state.screen == NAV_ACHIEVEMENTS_GALLERY;
+        NavScreen collection = game_view ? navigation->state.details_return : navigation->state.screen;
+        if (settings_graphical_home && (collection == NAV_FAVORITES ||
+            (collection == NAV_RECENTS && (game_view || settings_collection_rom[0])))) {
+            char removed[MAX_PATH_LEN];
+            snprintf(removed, sizeof removed, "%s", favorite_removed_path);
+            viewing_favourites = viewing_recents = false;
+            if (collection == NAV_FAVORITES) {
+                enter_favourites_view();
+            } else {
+                enter_recents_view();
+                game_switcher_fullscreen = enhanced_settings_recents_fullscreen;
+            }
+            int restored = -1;
+            for (int i = 0; i < entry_count; i++) {
+                const char *path = collection_game_path(i);
+                if (path && !strcmp(path, settings_collection_rom)) { restored = i; break; }
+            }
+            if (game_view && removed[0] && !strcmp(removed, settings_collection_rom)) {
+                selected_index = settings_collection_index;
+                if (entry_count <= selected_index) entry_count = selected_index + 1;
+                entries[selected_index].is_dir = 0;
+                snprintf(entries[selected_index].name, sizeof entries[selected_index].name,
+                         "%s", navigation->state.game_id);
+                snprintf(favorite_removed_path, sizeof favorite_removed_path, "%s", removed);
+            } else {
+                if (game_view && restored < 0) navigation->state.screen = collection;
+                if (restored < 0 && entry_count) restored = settings_collection_index < entry_count
+                                                           ? settings_collection_index : entry_count - 1;
+                select_visible_entry(restored);
+            }
+            return;
+        }
 
         if (settings_graphical_home &&
             (navigation->state.screen == NAV_RECENTS || navigation->state.screen == NAV_APPS)) {
@@ -5034,13 +5139,21 @@ static bool enhanced_apps_view(void) {
            !apps_browsing && !viewing_info;
 }
 
+static bool enhanced_recents_view(void) {
+    return settings_graphical_home && viewing_recents && !settings_menu_active;
+}
+
+static bool enhanced_favorites_view(void) {
+    return settings_graphical_home && viewing_favourites && !settings_menu_active;
+}
+
 static bool enhanced_details_view(void) {
-    return enhanced_library_view() &&
+    return (enhanced_library_view() || enhanced_recents_view() || enhanced_favorites_view()) &&
            enhanced_settings_navigation.state.screen == NAV_GAME_DETAILS;
 }
 
 static bool enhanced_achievements_view(void) {
-    return enhanced_library_view() &&
+    return (enhanced_library_view() || enhanced_recents_view() || enhanced_favorites_view()) &&
            enhanced_settings_navigation.state.screen == NAV_ACHIEVEMENTS_GALLERY;
 }
 
@@ -5670,7 +5783,7 @@ static void render_system_carousel(uint16_t *fb) {
 #define SYSTEM_GRID_ROWS 2
 #define SYSTEM_GRID_PAGE (SYSTEM_GRID_COLS * SYSTEM_GRID_ROWS)
 #define ENHANCED_HOME_VISIBLE 5
-enum EnhancedHomeItemKind { ENHANCED_HOME_PLATFORM, ENHANCED_HOME_RECENTS,
+enum EnhancedHomeItemKind { ENHANCED_HOME_FAVOURITES, ENHANCED_HOME_PLATFORM, ENHANCED_HOME_RECENTS,
                              ENHANCED_HOME_APPS, ENHANCED_HOME_SETTINGS };
 static enum EnhancedHomeItemKind enhanced_home_kind;
 #define ENHANCED_HOME_TRAVEL 3
@@ -5942,8 +6055,10 @@ static SystemIcon *system_icon_get(const char *folder) {
         system_icon_pack = settings_icon_pack_idx;
     }
     ThemeResourceDescriptor resource;
+    const char *resource_folder = strcmp(folder, FAVOURITES_ENTRY_NAME) == 0
+                                ? "favourites" : folder;
     if (settings_graphical_home && enhanced_theme &&
-        enhanced_platform_resource(folder, "icon", &resource) &&
+        enhanced_platform_resource(resource_folder, "icon", &resource) &&
         resource.kind == THEME_RESOURCE_PLATFORM_ICON) {
         SystemIcon *icon = system_icon_load(resource.path, &resource);
         if (icon) return icon;
@@ -5972,16 +6087,33 @@ static int enhanced_home_platform_count(void) {
     return entry_count - enhanced_home_platform_first();
 }
 
+/* Favorites is a logical Home destination even when the native scanner has
+ * no sentinel because the collection is empty. The scanner/cache projection
+ * itself remains untouched. */
+static bool enhanced_home_has_favourites(void) {
+    return true;
+}
+
+static int enhanced_home_ribbon_offset(void) {
+    return enhanced_home_has_favourites() ? 1 : 0;
+}
+
 static int enhanced_home_index(int platforms) {
+    if (enhanced_home_kind == ENHANCED_HOME_FAVOURITES)
+        return 0;
     if (enhanced_home_kind != ENHANCED_HOME_PLATFORM)
-        return platforms + enhanced_home_kind - ENHANCED_HOME_RECENTS;
+        return enhanced_home_ribbon_offset() + platforms +
+               enhanced_home_kind - ENHANCED_HOME_RECENTS;
     int platform = selected_index - enhanced_home_platform_first();
-    return platform >= 0 && platform < platforms ? platform : 0;
+    return enhanced_home_ribbon_offset() + (platform >= 0 && platform < platforms ? platform : 0);
 }
 
 static enum EnhancedHomeItemKind enhanced_home_item_kind(int index, int platforms) {
-    return index < platforms ? ENHANCED_HOME_PLATFORM
-         : ENHANCED_HOME_RECENTS + index - platforms;
+    if (enhanced_home_has_favourites() && index == 0)
+        return ENHANCED_HOME_FAVOURITES;
+    int first_platform = enhanced_home_ribbon_offset();
+    if (index < first_platform + platforms) return ENHANCED_HOME_PLATFORM;
+    return ENHANCED_HOME_RECENTS + index - first_platform - platforms;
 }
 
 static int enhanced_home_center_offset(int selected, int count) {
@@ -5999,7 +6131,7 @@ static bool enhanced_home_is_animating(void) {
 static void enhanced_home_move(int direction) {
     NavHorizontalWindow window;
     int platforms = enhanced_home_platform_count();
-    int count = platforms + 3;
+    int count = platforms + 3 + enhanced_home_ribbon_offset();
     int before = enhanced_home_index(platforms);
     nav_window_init(&window, count, ENHANCED_HOME_VISIBLE, before);
     if (!nav_window_move(&window, count, ENHANCED_HOME_VISIBLE, direction)) return;
@@ -6016,7 +6148,7 @@ static void enhanced_home_move(int direction) {
     enhanced_home_previous = before;
     enhanced_home_kind = enhanced_home_item_kind(window.selected, platforms);
     if (enhanced_home_kind == ENHANCED_HOME_PLATFORM)
-        selected_index = window.selected + enhanced_home_platform_first();
+        selected_index = window.selected - enhanced_home_ribbon_offset() + enhanced_home_platform_first();
     scroll_offset = window.offset;
     enhanced_home_target = window.selected;
     enhanced_home_frame = enhanced_home_motion_enabled() ? 0 : SYSTEM_CAROUSEL_FRAMES;
@@ -6034,13 +6166,13 @@ static void prepare_enhanced_grid(void) {
     int platform_first = enhanced_home_platform_first();
     int platforms = entry_count - platform_first;
     NavHorizontalWindow window;
-    nav_window_init(&window, platforms + 3, ENHANCED_HOME_VISIBLE,
+    nav_window_init(&window, platforms + 3 + enhanced_home_ribbon_offset(), ENHANCED_HOME_VISIBLE,
                     enhanced_home_index(platforms));
-    window.offset = enhanced_home_center_offset(window.selected, platforms + 3);
+    window.offset = enhanced_home_center_offset(window.selected, platforms + 3 + enhanced_home_ribbon_offset());
     enhanced_home_kind = enhanced_home_item_kind(window.selected, platforms);
     scroll_offset = window.offset;
     if (enhanced_home_kind == ENHANCED_HOME_PLATFORM)
-        selected_index = window.selected + platform_first;
+        selected_index = window.selected - enhanced_home_ribbon_offset() + platform_first;
 
     if (!enhanced_grid_prepared || enhanced_home_target != window.selected ||
         !enhanced_home_motion_enabled()) {
@@ -6056,19 +6188,26 @@ static void prepare_enhanced_grid(void) {
     int end = (int)ceilf(enhanced_home_from_offset);
     if (end < scroll_offset) end = scroll_offset;
     end += ENHANCED_HOME_VISIBLE;
-    if (end > platforms + 3) end = platforms + 3;
+    if (end > platforms + 3 + enhanced_home_ribbon_offset())
+        end = platforms + 3 + enhanced_home_ribbon_offset();
     size_t count = (size_t)(end - first);
     bool same = enhanced_grid_prepared && enhanced_grid_first == first &&
                 enhanced_grid_count == count && system_icon_pack == settings_icon_pack_idx;
     for (size_t i = 0; same && i < count; i++) {
         int index = first + (int)i;
-        const char *name = index < platforms ? entries[platform_first + index].name : "";
+        int platform_index = index - enhanced_home_ribbon_offset();
+        const char *name = index == 0 ? FAVOURITES_ENTRY_NAME
+                         : platform_index >= 0 && platform_index < platforms
+                         ? entries[platform_first + platform_index].name : "";
         same = strcmp(enhanced_grid_names[i], name) == 0;
     }
     if (same) return;
     for (size_t i = 0; i < count; i++) {
         int index = first + (int)i;
-        const char *name = index < platforms ? entries[platform_first + index].name : "";
+        int platform_index = index - enhanced_home_ribbon_offset();
+        const char *name = index == 0 ? FAVOURITES_ENTRY_NAME
+                         : platform_index >= 0 && platform_index < platforms
+                         ? entries[platform_first + platform_index].name : "";
         strcpy(enhanced_grid_names[i], name);
         enhanced_grid_icons[i] = name[0] ? system_icon_get(name) : NULL;
     }
@@ -6082,10 +6221,37 @@ static void system_icon_draw(uint16_t *fb, const SystemIcon *icon,
 
 static const char *enhanced_home_label(int index, int platforms) {
     switch (enhanced_home_item_kind(index, platforms)) {
+    case ENHANCED_HOME_FAVOURITES: return tr_or("tab.favourites", "Favourites");
     case ENHANCED_HOME_RECENTS:  return tr("tab.recents");
     case ENHANCED_HOME_APPS:     return tr("tab.apps");
     case ENHANCED_HOME_SETTINGS: return tr("tab.settings");
-    default: return system_display_name(entries[enhanced_home_platform_first() + index].name);
+    default: return system_display_name(entries[enhanced_home_platform_first() + index - enhanced_home_ribbon_offset()].name);
+    }
+}
+
+static void render_favorite_star(uint16_t *fb, int cx, int cy, int unit, uint16_t color) {
+    static const int points[10][2] = {
+        {0, -7}, {2, -2}, {7, -2}, {3, 1}, {5, 6},
+        {0, 3}, {-5, 6}, {-3, 1}, {-7, -2}, {-2, -2}
+    };
+    for (int y = -7 * unit; y < 6 * unit; y++) {
+        int crossings[10], count = 0;
+        for (int i = 0; i < 10; i++) {
+            int j = (i + 1) % 10;
+            int a = points[i][1] * unit, b = points[j][1] * unit;
+            if (!((a <= y && y < b) || (b <= y && y < a))) continue;
+            int x = points[i][0] * unit +
+                    (points[j][0] - points[i][0]) * unit * (y - a) / (b - a);
+            int at = count++;
+            while (at > 0 && crossings[at - 1] > x) {
+                crossings[at] = crossings[at - 1];
+                at--;
+            }
+            crossings[at] = x;
+        }
+        for (int i = 0; i + 1 < count; i += 2)
+            render_fill_rect(fb, cx + crossings[i], cy + y,
+                             crossings[i + 1] - crossings[i] + 1, 1, color);
     }
 }
 
@@ -6094,7 +6260,9 @@ static void enhanced_home_utility_icon(uint16_t *fb, enum EnhancedHomeItemKind k
                                        int cx, int cy, int size, uint16_t color) {
     int unit = size / 14;
     if (unit < 1) return;
-    if (kind == ENHANCED_HOME_RECENTS) {
+    if (kind == ENHANCED_HOME_FAVOURITES) {
+        render_favorite_star(fb, cx, cy, unit, color);
+    } else if (kind == ENHANCED_HOME_RECENTS) {
         render_rounded_rect(fb, cx - 5 * unit, cy - 5 * unit, 10 * unit,
                             10 * unit, 3 * unit, color);
         render_rounded_rect(fb, cx - 4 * unit, cy - 4 * unit, 8 * unit,
@@ -6277,11 +6445,11 @@ static void render_enhanced_home(uint16_t *fb) {
 
         uint16_t color = active ? COLOR_SELECT_TEXT : COLOR_TEXT;
         SystemIcon *icon = enhanced_grid_icons[slot];
-        if (index >= platforms) {
-            enhanced_home_utility_icon(fb, enhanced_home_item_kind(index, platforms),
-                                       center, center_y, size, color);
-        } else if (icon) {
+        enum EnhancedHomeItemKind kind = enhanced_home_item_kind(index, platforms);
+        if (icon) {
             system_icon_draw(fb, icon, x, y, size, size);
+        } else if (kind != ENHANCED_HOME_PLATFORM) {
+            enhanced_home_utility_icon(fb, kind, center, center_y, size, color);
         } else {
             const char *label = enhanced_home_label(index, platforms);
             unsigned char initial = (unsigned char)label[0];
@@ -6525,7 +6693,54 @@ static int coverflow_neighbors(void) {
     return theme ? (int)theme->coverflow_neighbors : 2;
 }
 
+static char collection_title[FILELIST_MAX_FIELD + 1];
+static char collection_fields[FILELIST_DETAIL_COUNT][FILELIST_MAX_FIELD + 1];
+
+static const char *collection_detail_value(int field) {
+    return collection_fields[field];
+}
+
+static void accept_collection_metadata(void *ctx, const char *filename, const char *title,
+                                       const char *const *details) {
+    if (strcmp(ctx, filename)) return;
+    if (title[0] && !collection_title[0])
+        snprintf(collection_title, sizeof collection_title, "%s", title);
+    if (!details) return;
+    for (int i = 0; i < FILELIST_DETAIL_COUNT; i++)
+        if (collection_fields[i][0]) return;
+    for (int i = 0; i < FILELIST_DETAIL_COUNT; i++)
+        snprintf(collection_fields[i], sizeof collection_fields[i], "%s", details[i]);
+}
+
+static void prepare_collection_metadata(const char *rom, const char *fallback) {
+    collection_title[0] = 0;
+    memset(collection_fields, 0, sizeof collection_fields);
+    char platform[64], csv[MAX_PATH_LEN];
+    if (collection_platform(platform, sizeof platform, rom)) {
+        int n = snprintf(csv, sizeof csv, "%s/%s/filelist.csv", ROMS_PATH, platform);
+        /* Match P6's platform-root-only CSV convention. */
+        size_t root = strlen(ROMS_PATH);
+        const char *relative = rom + root + 1;
+        const char *name = strchr(relative, '/');
+        if (n > 0 && (size_t)n < sizeof csv && name && !strchr(name + 1, '/') &&
+            !filelist_read(csv, accept_collection_metadata, (void *)(name + 1))) {
+            collection_title[0] = 0;
+            memset(collection_fields, 0, sizeof collection_fields);
+        }
+    }
+    const char *title = collection_title[0] ? collection_title : fallback;
+    fit_enhanced_title(coverflow_title_text, sizeof coverflow_title_text, title,
+                       SCREEN_WIDTH - UI_S(40));
+    coverflow_title_width = font_measure_text(coverflow_title_text);
+    fit_enhanced_title(details_title_text, sizeof details_title_text, title,
+                       SCREEN_WIDTH - CONTENT_X - UI_S(80));
+    struct stat st;
+    p9_rom_available = rom && stat(rom, &st) == 0 && S_ISREG(st.st_mode);
+    selected_favorite = rom && favorites_is_favorited_path(rom);
+}
+
 static bool coverflow_apps;
+static int coverflow_collection;
 static unsigned coverflow_apps_generation;
 static Thumbnail coverflow_app_art[BOXART_FLOW_SLOTS];
 typedef struct {
@@ -6575,7 +6790,7 @@ static const Thumbnail *prepare_app_cover(const char *key, Thumbnail *cover) {
 }
 
 static bool coverflow_animating(void) {
-    return (enhanced_apps_view() ||
+    return (enhanced_apps_view() || (enhanced_favorites_view() && !enhanced_details_view() && !enhanced_achievements_view()) ||
            (enhanced_library_view() && !enhanced_details_view() && !enhanced_achievements_view())) &&
            coverflow_frame < SYSTEM_CAROUSEL_FRAMES;
 }
@@ -6583,8 +6798,10 @@ static bool coverflow_animating(void) {
 /* Prepare a bounded card window for the active collection before drawing. */
 static void prepare_enhanced_library(bool theme_changed) {
     bool apps = enhanced_apps_view();
-    bool active = apps || enhanced_library_view();
-    bool new_collection = active && (apps != coverflow_apps ||
+    int collection = enhanced_favorites_view() ? 1 : enhanced_recents_view() ? 2 : 0;
+    bool active = apps || collection || enhanced_library_view();
+    bool new_collection = active && (apps != coverflow_apps || collection != coverflow_collection ||
+        (collection && coverflow_title_generation != filelist_scan_generation) ||
         strcmp(coverflow_directory, current_path) != 0 ||
         (apps && coverflow_apps_generation != apps_scan_generation));
     if (theme_changed || new_collection || ((!active || entry_count <= 0) && coverflow_directory[0])) {
@@ -6595,19 +6812,23 @@ static void prepare_enhanced_library(bool theme_changed) {
         coverflow_first = coverflow_last = 0;
     }
     coverflow_apps = apps;
+    coverflow_collection = collection;
     coverflow_apps_generation = apps_scan_generation;
     if (!active || entry_count <= 0) return;
     snprintf(coverflow_directory, sizeof coverflow_directory, "%s", current_path);
     if (selected_index < 0) selected_index = 0;
     if (selected_index >= entry_count) selected_index = entry_count - 1;
 
-    bool motion = enhanced_home_motion_enabled() && !enhanced_details_view() && !enhanced_achievements_view();
+    bool motion = collection != 2 && enhanced_home_motion_enabled() && !enhanced_details_view() && !enhanced_achievements_view();
     bool moving = coverflow_target >= 0 && coverflow_target != selected_index && motion;
     if (coverflow_target != selected_index || (!apps && coverflow_title_generation != filelist_scan_generation)) {
         if (apps) {
             fit_enhanced_title(coverflow_title_text, sizeof coverflow_title_text,
                                app_label(entries[selected_index].name), SCREEN_WIDTH - UI_S(40));
             coverflow_title_width = font_measure_text(coverflow_title_text);
+        } else if (collection) {
+            prepare_collection_metadata(collection_game_path(selected_index), entries[selected_index].name);
+            coverflow_title_generation = filelist_scan_generation;
         } else {
             prepare_coverflow_title(&entries[selected_index]);
             coverflow_title_generation = filelist_scan_generation;
@@ -6625,7 +6846,7 @@ static void prepare_enhanced_library(bool theme_changed) {
         coverflow_frame = SYSTEM_CAROUSEL_FRAMES;
     }
 
-    int neighbors = coverflow_neighbors();
+    int neighbors = collection == 2 ? 0 : coverflow_neighbors();
     int first = (int)floorf(coverflow_from) - neighbors;
     int last = (int)ceilf(coverflow_from) + neighbors + 1;
     if (first > selected_index - neighbors) first = selected_index - neighbors;
@@ -6641,8 +6862,7 @@ static void prepare_enhanced_library(bool theme_changed) {
                 prepare_app_cover(entries[i].name, &coverflow_app_art[i - first]);
         } else {
             char path[1024];
-            int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[i].name);
-            coverflow_images[i - first] = !entries[i].is_dir && n > 0 && (size_t)n < sizeof path
+            coverflow_images[i - first] = !entries[i].is_dir && selected_game_path(i, path, sizeof path)
                                          ? boxart_get(path, true) : NULL;
         }
     }
@@ -6783,17 +7003,35 @@ static void render_coverflow_cards(uint16_t *fb) {
 }
 
 static void render_enhanced_library(uint16_t *fb) {
-    render_header(fb, system_display_name(get_basename(current_path)));
+    bool favorites = enhanced_favorites_view();
+    render_header(fb, favorites ? tr("folder.favourites") : system_display_name(get_basename(current_path)));
     if (entry_count <= 0) {
-        const char *message = tr_or("enhanced.library.empty", "No games in this collection");
+        const char *message = favorites
+            ? tr_or("enhanced.favorites.empty", "No favorites yet")
+            : tr_or("enhanced.library.empty", "No games in this collection");
+        if (favorites)
+            enhanced_home_utility_icon(fb, ENHANCED_HOME_FAVOURITES, SCREEN_WIDTH / 2,
+                                       SCREEN_HEIGHT / 3, UI_S(70), COLOR_TEXT);
         font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, (SCREEN_WIDTH - font_measure_text(message)) / 2,
                        SCREEN_HEIGHT / 2, message, COLOR_TEXT);
-        render_legend(fb, LEGEND_X_NONE, 0, 0);
+        if (favorites) {
+            const char *tip = tr_or("enhanced.favorites.tip", "Use Y in Game Details to add a favorite");
+            font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
+                           (SCREEN_WIDTH - font_measure_text(tip)) / 2,
+                           SCREEN_HEIGHT / 2 + ITEM_HEIGHT, tip, COLOR_TEXT);
+        }
+        if (favorites)
+            font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, UI_S(22), SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5),
+                           tr_or("enhanced.recents.back", "B Back"), COLOR_LEGEND);
+        else render_legend(fb, LEGEND_X_NONE, 0, 0);
         return;
     }
     render_coverflow_cards(fb);
     coverflow_title(fb, SCREEN_HEIGHT * 76 / 100);
-    render_legend(fb, LEGEND_X_NONE, 1, 1);
+    if (favorites)
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, UI_S(22), SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5),
+                       tr_or("enhanced.favorites.actions", "A Details   B Back"), COLOR_LEGEND);
+    else render_legend(fb, LEGEND_X_NONE, 1, 1);
 }
 
 static void render_enhanced_apps(uint16_t *fb) {
@@ -6836,8 +7074,7 @@ static void render_details_chevron(uint16_t *fb, int x, int direction) {
 
 static int details_recent_rank(int index) {
     char path[sizeof ((RecentGame *)0)->full_path];
-    int written = snprintf(path, sizeof path, "%s/%s", current_path, entries[index].name);
-    if (written < 0 || (size_t)written >= sizeof path) return -1;
+    if (!selected_game_path(index, path, sizeof path)) return -1;
     const RecentGame *recent = recent_games_get_list();
     for (int i = 0; i < recent_games_get_count(); i++)
         if (strcmp(path, recent[i].full_path) == 0) return i;
@@ -6892,7 +7129,7 @@ static unsigned details_stats_generation;
 static int details_stats_index = -1;
 
 static void prepare_details_metrics(void) {
-    if (!enhanced_details_view() && !enhanced_achievements_view()) {
+    if (!enhanced_details_view() && !enhanced_achievements_view() && !enhanced_recents_view()) {
         details_stats_index = -1;
         return;
     }
@@ -6904,8 +7141,7 @@ static void prepare_details_metrics(void) {
     if (selected_index < 0 || selected_index >= entry_count || entries[selected_index].is_dir) return;
 
     char path[MAX_PATH_LEN];
-    int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[selected_index].name);
-    if (n < 0 || (size_t)n >= sizeof path) return;
+    if (!selected_game_path(selected_index, path, sizeof path)) return;
     FILE *file = fopen(PLAY_SESSIONS_PATH, "r");
     char line[MAX_PATH_LEN + 96];
     while (file && fgets(line, sizeof line, file)) {
@@ -6957,9 +7193,11 @@ static void render_details_information(uint16_t *fb, int index, int y) {
     }
 
     const char *platform = enhanced_settings_navigation.state.platform_id;
-    const char *dot = strrchr(entries[index].name, '.');
+    const char *rom_path = collection_game_path(index);
+    const char *rom_name = rom_path ? get_basename(rom_path) : entries[index].name;
+    const char *dot = strrchr(rom_name, '.');
     char format[24] = "";
-    if (dot && dot != entries[index].name && dot[1]) {
+    if (dot && dot != rom_name && dot[1]) {
         for (size_t i = 0; dot[i + 1] && i < sizeof format - 1; i++)
             format[i] = (char)toupper((unsigned char)dot[i + 1]);
     }
@@ -6968,7 +7206,7 @@ static void render_details_information(uint16_t *fb, int index, int y) {
     render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
     y += step;
     snprintf(line, sizeof line, "%s: %s", tr_or("enhanced.details.rom", "ROM"),
-             entries[index].name);
+             rom_name);
     render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
     y += step;
 
@@ -6995,8 +7233,9 @@ static void render_details_information(uint16_t *fb, int index, int y) {
             y += step;
         }
     }
-    uint32_t offset = filelist_detail_offsets ? filelist_detail_offsets[index] : 0;
-    if (!offset) return;
+    bool collection = viewing_recents || viewing_favourites;
+    uint32_t offset = !collection && filelist_detail_offsets ? filelist_detail_offsets[index] : 0;
+    if (!offset && !collection) return;
 
     const char *labels[FILELIST_DESCRIPTION] = {
         tr_or("enhanced.details.original_title", "Original title"),
@@ -7006,15 +7245,17 @@ static void render_details_information(uint16_t *fb, int index, int y) {
         tr_or("enhanced.details.genre", "Genre"),
         tr_or("enhanced.details.players", "Players")
     };
-    const char *value = filelist_details + offset - 1;
+    const char *value = collection ? NULL : filelist_details + offset - 1;
     for (int i = 0; i < FILELIST_DESCRIPTION; i++) {
+        if (collection) value = collection_detail_value(i);
         if (*value && y + step <= bottom) {
             snprintf(line, sizeof line, "%s: %s", labels[i], value);
             render_details_text(fb, line, x, y, width, step, COLOR_TEXT);
             y += step;
         }
-        value += strlen(value) + 1;
+        if (!collection) value += strlen(value) + 1;
     }
+    if (collection) value = collection_detail_value(FILELIST_DESCRIPTION);
     if (*value && y + 2 * step <= bottom) {
         y += UI_S(5);
         render_details_text(fb, tr_or("enhanced.details.description", "Description"),
@@ -7051,7 +7292,7 @@ static const NavCatalog details_ra_catalog = {
 };
 
 static void prepare_details_achievements(const char *sd_root) {
-    if (!enhanced_details_view() && !enhanced_achievements_view()) {
+    if (!enhanced_details_view() && !enhanced_achievements_view() && !enhanced_recents_view()) {
         if (!settings_menu_active) {
             details_achievement_game = -1;
             details_achievements_valid = false;
@@ -7068,12 +7309,13 @@ static void prepare_details_achievements(const char *sd_root) {
     details_achievements_valid = false;
     if (selected_index >= 0 && selected_index < entry_count && !entries[selected_index].is_dir) {
         char path[sizeof current_path + sizeof entries[0].name];
-        int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[selected_index].name);
-        if (n > 0 && (size_t)n < sizeof path) {
+        if (selected_game_path(selected_index, path, sizeof path)) {
             bool same_game = strcmp(path, details_achievement_path) == 0;
             snprintf(details_achievement_path, sizeof details_achievement_path, "%s", path);
-            details_achievements_valid = ra_game_read(sd_root, path,
-                enhanced_settings_navigation.state.platform_id, &details_achievements);
+            char platform[64];
+            const char *platform_id = enhanced_settings_navigation.state.platform_id;
+            if (collection_platform(platform, sizeof platform, path)) platform_id = platform;
+            details_achievements_valid = ra_game_read(sd_root, path, platform_id, &details_achievements);
             if (same_game && previous && details_achievements_valid) {
                 for (size_t i = 0; i < details_achievements.achievement_count; i++) {
                     if (details_achievements.achievements[i].id == previous) {
@@ -7227,11 +7469,88 @@ static void render_enhanced_game_details(uint16_t *fb) {
         render_ra_trophy(fb, label - glyph - UI_S(5), footer, glyph);
         font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, label, footer, gallery, COLOR_LEGEND);
     }
+    char path[MAX_PATH_LEN];
+    if (selected_game_path(selected_index, path, sizeof path)) {
+        bool favorite = favorites_is_favorited_path(path);
+        int footer = SCREEN_HEIGHT - 2 * ITEM_HEIGHT - UI_S(8);
+        enhanced_home_utility_icon(fb, ENHANCED_HOME_FAVOURITES, UI_S(28),
+                                   footer + UI_S(12), UI_S(24), favorite ? COLOR_HEADER : COLOR_DISABLED);
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, UI_S(50), footer,
+            favorite ? tr_or("enhanced.favorite.remove", "Y Remove favorite")
+                     : tr_or("enhanced.favorite.add", "Y Add favorite"), COLOR_LEGEND);
+    }
     const char *hint = tr_or("enhanced.details.play_back", "A  Play    B  Back");
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT,
                    (SCREEN_WIDTH - font_measure_text(hint)) / 2,
                    SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5), hint, COLOR_LEGEND);
 }
+
+#ifndef FROGUI_SCREENSHOT_ROOT
+#define FROGUI_SCREENSHOT_ROOT SDCARD_BASE "/picoarch"
+#endif
+
+static int load_bounded_screenshot_thumbnail(const char *game, Thumbnail *thumb) {
+    char parent[MAX_PATH_LEN], platform[64];
+    if (!collection_platform(platform, sizeof platform, game)) return 0;
+    int n = snprintf(parent, sizeof parent, "%s/%s", ROMS_PATH, platform);
+    if (n < 0 || (size_t)n >= sizeof parent || strncmp(game, parent, (size_t)n) ||
+        game[n] != '/' || strchr(game + n + 1, '/')) return 0;
+    const char *name = game + n + 1;
+    const char *dot = strrchr(name, '.');
+    size_t stem = dot ? (size_t)(dot - name) : strlen(name);
+    if (!stem || stem > 255) return 0;
+    /* PicoArch names captures by platform and stem. Reject ambiguous siblings. */
+    DIR *dir = opendir(parent);
+    if (!dir) return 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir))) {
+        if (!strcmp(entry->d_name, name) || entry->d_name[0] == '.') continue;
+        const char *other_dot = strrchr(entry->d_name, '.');
+        if (other_dot && (size_t)(other_dot - entry->d_name) == stem &&
+            !strncasecmp(entry->d_name, name, stem)) {
+            closedir(dir);
+            return 0;
+        }
+    }
+    closedir(dir);
+
+    struct stat rom_info;
+    if (stat(game, &rom_info) != 0 || !S_ISREG(rom_info.st_mode)) return 0;
+    char lower[sizeof platform];
+    size_t i = 0;
+    do { lower[i] = (char)tolower((unsigned char)platform[i]); } while (platform[i++]);
+    const char *tags[] = {platform, lower};
+    char paths[22][MAX_PATH_LEN];
+    time_t times[22];
+    int count = 0;
+    for (int tag = 0; tag < (strcmp(platform, lower) ? 2 : 1); tag++) {
+        for (int slot = -1; slot < 10; slot++) {
+            char suffix[16] = ".scr.bmp";
+            if (slot >= 0) snprintf(suffix, sizeof suffix, ".st%d.bmp", slot);
+            char *path = paths[count];
+            int length = snprintf(path, MAX_PATH_LEN, "%s/%s/%.*s%s",
+                                  FROGUI_SCREENSHOT_ROOT, tags[tag], (int)stem, name, suffix);
+            struct stat info;
+            if (length > 0 && length < MAX_PATH_LEN && stat(path, &info) == 0 &&
+                S_ISREG(info.st_mode) && difftime(rom_info.st_mtime, info.st_mtime) <= 2)
+                times[count++] = info.st_mtime;
+        }
+    }
+    while (count) {
+        int newest = 0;
+        for (int at = 1; at < count; at++)
+            if (times[at] > times[newest]) newest = at;
+        if (load_bounded_screenshot_image(paths[newest], thumb)) return 1;
+        count--;
+        if (newest != count) {
+            memcpy(paths[newest], paths[count], MAX_PATH_LEN);
+            times[newest] = times[count];
+        }
+    }
+    return 0;
+}
+
+#include "enhanced_recents.h"
 
 static void render_browser_grid(uint16_t *fb) {
     const RenderTheme *theme = render_theme_current();
@@ -7343,6 +7662,72 @@ static void render_browser_grid(uint16_t *fb) {
 
 static void launch_by_path(const char *path);
 
+static bool open_shared_game_details(void) {
+    char path[MAX_PATH_LEN], platform[64];
+    if (selected_index < 0 || selected_index >= entry_count || entries[selected_index].is_dir ||
+        !selected_game_path(selected_index, path, sizeof path) ||
+        !collection_platform(platform, sizeof platform, path)) return false;
+    struct stat info;
+    if ((viewing_recents || viewing_favourites) &&
+        (stat(path, &info) != 0 || !S_ISREG(info.st_mode))) return false;
+    NavModel *nav = &enhanced_settings_navigation;
+    nav_model_init(nav, true);
+    nav->state.screen = viewing_recents ? NAV_RECENTS : viewing_favourites ? NAV_FAVORITES : NAV_GAME_LIBRARY;
+    snprintf(nav->state.platform_id, NAV_ID_MAX, "%s", platform);
+    snprintf(nav->state.game_id, NAV_ID_MAX, "%s", entries[selected_index].name);
+    NavEffect effect;
+    if (!nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect) || effect != NAV_EFFECT_OPEN_DETAILS)
+        return false;
+    details_cover_start_offset = coverflow_target >= 0 ? selected_index - coverflow_visible : 0.0f;
+    details_cover_transition_frame = !viewing_recents && enhanced_home_motion_enabled()
+                                   ? 0 : SYSTEM_CAROUSEL_FRAMES;
+    return true;
+}
+
+static void refresh_removed_favorite(void) {
+    if (!favorite_removed_path[0]) return;
+    int previous = selected_index;
+    enter_favourites_view();
+    if (entry_count > 0)
+        select_visible_entry(previous < entry_count ? previous : entry_count - 1);
+}
+
+static void toggle_details_favorite(void) {
+    char path[MAX_PATH_LEN], parent[MAX_PATH_LEN];
+    if (!selected_game_path(selected_index, path, sizeof path)) return;
+    struct stat info;
+    if (stat(path, &info) != 0 || !S_ISREG(info.st_mode)) return;
+    bool already = favorites_is_favorited_path(path);
+    if (already) {
+        if (!favorites_remove_by_path(path)) return;
+        if (viewing_favourites)
+            snprintf(favorite_removed_path, sizeof favorite_removed_path, "%s", path);
+    } else {
+        snprintf(parent, sizeof parent, "%s", path);
+        char *slash = strrchr(parent, '/');
+        if (!slash) return;
+        *slash = 0;
+        const char *core = core_override_lookup(path, parent);
+        if (!core) core = get_core_for_folder(get_console_folder(path));
+        if (!core) core = get_core_for_extension(path);
+        if (!core) return;
+        char title[256];
+        snprintf(title, sizeof title, "%s", get_basename(path));
+        char *dot = strrchr(title, '.');
+        if (dot && dot != title) *dot = 0;
+        if (!favorites_toggle_path(core, title, path)) return;
+        if (favorite_removed_path[0] && !strcmp(favorite_removed_path, path)) {
+            enter_favourites_view();
+            for (int i = 0; i < entry_count; i++) {
+                const char *game = collection_game_path(i);
+                if (game && !strcmp(game, path)) { select_visible_entry(i); break; }
+            }
+        }
+    }
+    selected_favorite = !already;
+    ui_toast_show(already ? "Removed from Favourites" : "Added to Favourites");
+}
+
 static void handle_input(void) {
     input_update();
 
@@ -7368,16 +7753,28 @@ static void handle_input(void) {
             open_enhanced_settings();
         } else if (input_was_pressed(FROG_BTN_B)) {
             nav_model_handle(nav, NULL, NAV_INPUT_BACK, &effect);
+            refresh_removed_favorite();
+        } else if (input_was_pressed(FROG_BTN_Y)) {
+            toggle_details_favorite();
         } else if (input_was_pressed(FROG_BTN_L2)) {
             nav_model_handle(nav, &details_ra_catalog, NAV_INPUT_GALLERY, &effect);
         } else if (input_was_pressed(FROG_BTN_LEFT) ||
                    input_was_pressed(FROG_BTN_RIGHT)) {
             int direction = input_was_pressed(FROG_BTN_LEFT) ? -1 : 1;
-            int next = details_playable_neighbor(selected_index, direction);
+            bool removed = favorite_removed_path[0] != 0;
+            refresh_removed_favorite();
+            if (removed && !entry_count) {
+                nav_model_handle(nav, NULL, NAV_INPUT_BACK, NULL);
+                return;
+            }
+            int next = removed ? selected_index : details_playable_neighbor(selected_index, direction);
             if (next >= 0) {
                 select_visible_entry(next);
                 snprintf(nav->state.game_id, sizeof nav->state.game_id,
                          "%s", entries[selected_index].name);
+                char path[MAX_PATH_LEN];
+                if (selected_game_path(selected_index, path, sizeof path))
+                    collection_platform(nav->state.platform_id, NAV_ID_MAX, path);
                 /* Paging inside Details keeps the settled cover in the
                  * left pane; CoverFlow movement is not replayed here. */
                 details_cover_transition_frame = SYSTEM_CAROUSEL_FRAMES;
@@ -7389,10 +7786,13 @@ static void handle_input(void) {
                    nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect) &&
                    effect == NAV_EFFECT_LAUNCH_GAME) {
             char path[1024];
-            int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[selected_index].name);
-            if (n > 0 && (size_t)n < sizeof path) {
-                nav->state.screen = NAV_GAME_LIBRARY;
-                launch_by_path(path);
+            if (selected_game_path(selected_index, path, sizeof path)) {
+                struct stat info;
+                if (stat(path, &info) == 0 && S_ISREG(info.st_mode)) {
+                    nav_model_handle(nav, NULL, NAV_INPUT_BACK, NULL);
+                    refresh_removed_favorite();
+                    launch_by_path(path);
+                }
             }
         }
         return;
@@ -7542,7 +7942,7 @@ static void handle_input(void) {
 
     /* The existing Settings adapter also retains the current secondary list. */
     if (settings_graphical_home && !settings_menu_active &&
-        input_was_pressed(FROG_BTN_START) && !viewing_favourites && !apps_browsing &&
+        input_was_pressed(FROG_BTN_START) && !apps_browsing &&
         !viewing_search && !viewing_activity) {
         open_enhanced_settings();
         return;
@@ -7771,8 +8171,16 @@ static void handle_input(void) {
         int platforms = enhanced_home_platform_count();
         enum EnhancedHomeItemKind kind = enhanced_home_item_kind(enhanced_home_index(platforms), platforms);
         if (input_was_pressed(FROG_BTN_A) && kind != ENHANCED_HOME_PLATFORM) {
-            if (kind == ENHANCED_HOME_SETTINGS) open_enhanced_settings();
-            else switch_main_tab(kind == ENHANCED_HOME_RECENTS ? MAIN_TAB_RECENTS : MAIN_TAB_APPS);
+            if (kind == ENHANCED_HOME_SETTINGS) {
+                open_enhanced_settings();
+            } else if (kind == ENHANCED_HOME_FAVOURITES) {
+                games_tab_selected = selected_index;
+                save_games_tab_entries();
+                ui_transition_start(1);
+                enter_favourites_view();
+            } else {
+                switch_main_tab(kind == ENHANCED_HOME_RECENTS ? MAIN_TAB_RECENTS : MAIN_TAB_APPS);
+            }
             return;
         }
         if (input_was_pressed(FROG_BTN_Y) && favorites_get_count() > 0) {
@@ -7784,25 +8192,13 @@ static void handle_input(void) {
         }
     }
 
-    if (enhanced_library_view() && input_was_pressed(FROG_BTN_A) &&
-        selected_index >= 0 && selected_index < entry_count && !entries[selected_index].is_dir) {
-        const char *platform = enhanced_library_relative_path();
-        size_t length = strcspn(platform, "/");
-        NavModel *nav = &enhanced_settings_navigation;
-        NavEffect effect;
-        nav_model_init(nav, true);
-        nav->state.screen = NAV_GAME_LIBRARY;
-        snprintf(nav->state.platform_id, sizeof nav->state.platform_id, "%.*s",
-                 (int)length, platform);
-        snprintf(nav->state.game_id, sizeof nav->state.game_id, "%s", entries[selected_index].name);
-        if (nav_model_handle(nav, NULL, NAV_INPUT_CONFIRM, &effect) &&
-            effect == NAV_EFFECT_OPEN_DETAILS) {
-            details_cover_start_offset = coverflow_target >= 0
-                                        ? selected_index - coverflow_visible : 0.0f;
-            details_cover_transition_frame = enhanced_home_motion_enabled()
-                                           ? 0 : SYSTEM_CAROUSEL_FRAMES;
+    if (((enhanced_library_view() || enhanced_favorites_view()) && input_was_pressed(FROG_BTN_A)) ||
+        (enhanced_recents_view() && input_was_pressed(FROG_BTN_X))) {
+        if (!open_shared_game_details() && (enhanced_recents_view() || enhanced_favorites_view())) {
+            ui_toast_show("ROM unavailable");
+            return;
         }
-        return;
+        if (enhanced_details_view()) return;
     }
 
     if (input_was_pressed(FROG_BTN_A) && selected_index < entry_count) {
@@ -7822,8 +8218,13 @@ static void handle_input(void) {
             /* Launch from recent games list */
             const RecentGame *rg = recent_games_get_list();
             int rc = recent_games_get_count();
-            if (selected_index < rc)
-                launch_by_path(rg[selected_index].full_path);
+            if (selected_index < rc) {
+                const char *path = rg[selected_index].full_path;
+                struct stat info;
+                if (!settings_graphical_home || (stat(path, &info) == 0 && S_ISREG(info.st_mode)))
+                    launch_by_path(path);
+                else ui_toast_show("ROM unavailable");
+            }
         } else if (viewing_apps) {
             if (enhanced_apps_view()) apps_tab_selected = selected_index;
             /* Apps entries are virtual aliases for the on-card media folders. */
@@ -7923,9 +8324,12 @@ static void handle_input(void) {
             ui_transition_start(-1);
             viewing_favourites = false;
             scan_directory(ROMS_PATH);
-            if (settings_graphical_home && games_tab_selected >= 0 &&
-                games_tab_selected < games_tab_entry_count)
+            if (settings_graphical_home && enhanced_home_kind == ENHANCED_HOME_FAVOURITES) {
+                selected_index = enhanced_home_platform_first() ? 0 : 0;
+            } else if (settings_graphical_home && games_tab_selected >= 0 &&
+                       games_tab_selected < games_tab_entry_count) {
                 select_visible_entry(visible_entry_named(games_tab_entries[games_tab_selected].name));
+            }
             strncpy(current_path, ROMS_PATH, MAX_PATH_LEN-1);
             switch_home_open = render_theme_current()->home_layout != RENDER_HOME_DEFAULT;
         } else if (enhanced_library_view()) {
@@ -8004,7 +8408,7 @@ static void handle_input(void) {
             if (next >= entry_count) next = entry_count - 1;
             selected_index = next;
         }
-    } else if (enhanced_library_view() || enhanced_apps_view()) {
+    } else if (enhanced_library_view() || enhanced_apps_view() || enhanced_recents_view() || enhanced_favorites_view()) {
         if (input_repeat(FROG_BTN_LEFT) && selected_index > 0) selected_index--;
         if (input_repeat(FROG_BTN_RIGHT) && selected_index + 1 < entry_count) selected_index++;
     } else if (browser_grid_view()) {
@@ -8484,6 +8888,9 @@ bool retro_load_game(const struct retro_game_info *info) {
 }
 
 void retro_unload_game(void) {
+    free(enhanced_recents_screenshot.data);
+    enhanced_recents_screenshot = (Thumbnail){0};
+    enhanced_recents_game[0] = 0;
     free_thumbnail(&details_badge);
     details_badge_game = -1;
     details_achievement_game = -1;
@@ -8977,6 +9384,7 @@ void retro_run(void) {
     prepare_enhanced_library(enhanced_theme_changed);
     prepare_details_metrics();
     prepare_details_achievements(SDCARD_BASE);
+    prepare_enhanced_recents();
     prepare_details_badge();
     RenderThemeScreen theme_screen = (settings_menu_active || viewing_info) ? RENDER_SCREEN_SETTINGS :
         viewing_recents ? RENDER_SCREEN_RECENTS :
@@ -9140,6 +9548,12 @@ void retro_run(void) {
             banner_path = "settings";
         } else if (enhanced_home_view() && enhanced_home_kind != ENHANCED_HOME_PLATFORM) {
             banner_path = "";
+        } else if (enhanced_recents_view()) {
+            char platform[64];
+            if (collection_platform(platform, sizeof platform, collection_game_path(selected_index))) {
+                snprintf(sel_path, sizeof sel_path, "%s/%s", ROMS_PATH, platform);
+                banner_path = sel_path;
+            }
         } else if (!viewing_recents && !viewing_favourites &&
                    selected_index >= 0 && selected_index < entry_count) {
             if (strcmp(entries[selected_index].name, SETTINGS_ENTRY_NAME) == 0) {
@@ -9186,11 +9600,11 @@ void retro_run(void) {
                            settings_background_dim != banner_last_dim ||
                            settings_render_scheme_idx != banner_last_renderer);
         }
-        if ((need_reload || enhanced_theme_changed) && !(viewing_recents && settings_game_switcher)) {
+        if ((need_reload || enhanced_theme_changed) && !(viewing_recents && settings_game_switcher && !settings_graphical_home)) {
             /* GameSwitcher paints its own full panel. Leave the Games banner
              * and its cache keys untouched while Recents is open, so returning
              * to Games does not decode the same background from SD again. */
-            load_banner_for_view(banner_path, viewing_recents, viewing_favourites);
+            load_banner_for_view(banner_path, viewing_recents && !enhanced_recents_view(), viewing_favourites);
             if (startup_bg_override) {
                 theme_set_bg_override(0, 0);
                 startup_bg_override = false;
@@ -9332,7 +9746,7 @@ void retro_run(void) {
         render_enhanced_settings_menu();
     } else if (settings_menu_active) {
         render_settings_menu();
-    } else if (viewing_recents && settings_game_switcher) {
+    } else if (viewing_recents && settings_game_switcher && !settings_graphical_home) {
         /* Do not paint or discard the cached Games banner behind GameSwitcher. */
         render_clear_screen(framebuffer);
         render_game_switcher(framebuffer);
@@ -9360,7 +9774,9 @@ void retro_run(void) {
             render_enhanced_achievements(framebuffer);
         } else if (enhanced_details_view()) {
             render_enhanced_game_details(framebuffer);
-        } else if (enhanced_library_view()) {
+        } else if (enhanced_recents_view()) {
+            render_enhanced_recents(framebuffer);
+        } else if (enhanced_library_view() || enhanced_favorites_view()) {
             render_enhanced_library(framebuffer);
         } else if (browser_grid_view()) {
             render_browser_grid(framebuffer);

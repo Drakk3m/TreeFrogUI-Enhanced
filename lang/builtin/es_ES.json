@@ -1,4 +1,13 @@
 {
+  "enhanced.favorites.actions": "A Detalles   B Atrás",
+  "enhanced.favorites.empty": "Aún no hay favoritos",
+  "enhanced.favorites.tip": "Pulsa Y en Detalles para añadir un favorito",
+  "enhanced.favorite.add": "Y Añadir favorito",
+  "enhanced.favorite.remove": "Y Quitar favorito",
+  "enhanced.recents.empty": "No hay juegos recientes",
+  "enhanced.recents.actions": "A Jugar   X Detalles   B Atrás",
+  "enhanced.recents.back": "B Atrás",
+  "enhanced.recents.missing": "ROM no disponible",
   "enhanced.apps.empty": "No hay aplicaciones disponibles",
   "enhanced.apps.controls": "A Abrir    B Atrás",
   "enhanced.settings.range_controls": "Izq/Der Ajustar   B Atrás",

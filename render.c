@@ -792,6 +792,29 @@ static unsigned char *load_bounded_image(const char *path, int *w, int *h, bool 
   return pixels;
 }
 
+int load_bounded_screenshot_image(const char *path, Thumbnail *thumb) {
+  int w, h;
+  unsigned char *rgba = load_bounded_image(path, &w, &h, false);
+  if (!rgba) return 0;
+  int dw = w, dh = h;
+  if (dw > 320) { dh = dh * 320 / dw; dw = 320; }
+  if (dh > 240) { dw = dw * 240 / dh; dh = 240; }
+  if (dw < 1) dw = 1;
+  if (dh < 1) dh = 1;
+  uint16_t *pixels = malloc((size_t)dw * dh * sizeof *pixels);
+  if (pixels) {
+    for (int y = 0; y < dh; y++) {
+      for (int x = 0; x < dw; x++) {
+        const unsigned char *pixel = rgba + ((size_t)(y * h / dh) * w + x * w / dw) * 4;
+        pixels[y * dw + x] = rgb24_to_rgb565(pixel[0], pixel[1], pixel[2]);
+      }
+    }
+    *thumb = (Thumbnail){ .data = pixels, .width = dw, .height = dh };
+  }
+  stbi_image_free(rgba);
+  return pixels != NULL;
+}
+
 // Decode a JPG/PNG/BMP via stb_image and nearest-neighbor downscale into the
 // static RGB565 buffer (aspect-preserving, capped at 250x250). Alpha is kept
 // in a side buffer and composited per-pixel at render time, so transparent
@@ -1006,8 +1029,9 @@ void render_thumbnail(uint16_t *framebuffer, const Thumbnail *thumb) {
   }
 }
 
-void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
-                                int x, int y, int width, int height, float projection) {
+static void render_thumbnail_transform(uint16_t *framebuffer, const Thumbnail *thumb,
+                                       int x, int y, int width, int height, float projection,
+                                       int skew) {
   if (!framebuffer || !thumb || !thumb->data || thumb->width <= 0 ||
       thumb->height <= 0 || width <= 0 || height <= 0) return;
   int dw = width, dh = height;
@@ -1023,8 +1047,9 @@ void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
   int top = y + (height - dh) / 2;
   for (int py = 0; py < dh; py++) {
     int sy = py * thumb->height / dh;
+    int row_left = left + skew * py / dh;
     for (int px = 0; px < dw; px++) {
-      int dx = left + px, dy = top + py;
+      int dx = row_left + px, dy = top + py;
       if (dx < 0 || dx >= SCREEN_WIDTH || dy < 0 || dy >= SCREEN_HEIGHT) continue;
       int sx = px * thumb->width / dw;
       int si = sy * thumb->width + sx;
@@ -1042,6 +1067,16 @@ void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
       }
     }
   }
+}
+
+void render_thumbnail_projected(uint16_t *framebuffer, const Thumbnail *thumb,
+                                int x, int y, int width, int height, float projection) {
+  render_thumbnail_transform(framebuffer, thumb, x, y, width, height, projection, 0);
+}
+
+void render_thumbnail_skewed(uint16_t *framebuffer, const Thumbnail *thumb,
+                             int x, int y, int width, int height, int skew) {
+  render_thumbnail_transform(framebuffer, thumb, x, y, width, height, 0.96f, skew);
 }
 
 void render_thumbnail_contained(uint16_t *framebuffer, const Thumbnail *thumb,

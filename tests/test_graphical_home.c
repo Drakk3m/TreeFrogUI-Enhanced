@@ -2,11 +2,14 @@
 #include <assert.h>
 static char test_theme_pack_root[512];
 #define FROGUI_THEME_PACK_ROOT test_theme_pack_root
+static char test_screenshot_root[512];
+#define FROGUI_SCREENSHOT_ROOT test_screenshot_root
 #include "../frogui_libretro.c"
 
 static char test_settings[MAX_PATH_LEN];
 static char test_cache[MAX_PATH_LEN];
 static char test_launch[MAX_PATH_LEN];
+static char test_p9_favorites[MAX_PATH_LEN], test_p9_history[MAX_PATH_LEN];
 static char test_sessions[MAX_PATH_LEN];
 static char test_playtime[MAX_PATH_LEN];
 
@@ -74,6 +77,10 @@ FILE *__wrap_fopen(const char *path, const char *mode) {
         return __real_fopen(test_sessions, mode);
     if (test_playtime[0] && strcmp(path, "/mnt/sdcard/frogui/playtime.txt") == 0)
         return __real_fopen(test_playtime, mode);
+    if (test_p9_favorites[0] && !strcmp(path, "/mnt/sdcard/frogui/favorites.txt"))
+        return __real_fopen(test_p9_favorites, mode);
+    if (test_p9_history[0] && !strcmp(path, HISTORY_FILE))
+        return __real_fopen(test_p9_history, mode);
     if (strcmp(path, LAUNCH_FILE) == 0) return __real_fopen(test_launch, mode);
     if (strcmp(path, SETTINGS_FILE) == 0)
         return __real_fopen(test_settings, mode);
@@ -117,7 +124,7 @@ static void press(FrogButton button) {
     input_set_ext_raw(1u << input_get_raw_bit(button));
     handle_input();
     /* Face buttons require a stable hold in the real input layer. */
-    if (button == FROG_BTN_A || button == FROG_BTN_B) {
+    if (button == FROG_BTN_A || button == FROG_BTN_B || button == FROG_BTN_X || button == FROG_BTN_Y) {
         input_fixture_ms += 80;
         handle_input();
     }
@@ -699,6 +706,7 @@ static void test_ribbon(const char *root) {
                    (row + 1 < count ? COLOR_TEXT : COLOR_DISABLED));
         }
     }
+    enhanced_home_kind = ENHANCED_HOME_FAVOURITES;
     prepare_enhanced_grid();
     render_enhanced_home(framebuffer); /* Offline export absent. */
     assert(selected_index == 0 && scroll_offset == 0);
@@ -707,7 +715,7 @@ static void test_ribbon(const char *root) {
 
     press(FROG_BTN_RIGHT);
     prepare_enhanced_grid();
-    assert(selected_index == 1 && scroll_offset == 0);
+    assert(selected_index == 0 && scroll_offset == 0);
     assert(enhanced_grid_first == 0 && enhanced_grid_count == ENHANCED_HOME_VISIBLE);
     assert(enhanced_home_center_offset(0, 9) == 0);
     assert(enhanced_home_center_offset(4, 9) == 2);
@@ -715,10 +723,10 @@ static void test_ribbon(const char *root) {
     assert(enhanced_home_center_offset(3, 4) == 0);
     press(FROG_BTN_RIGHT);
     prepare_enhanced_grid();
-    assert(selected_index == 2 && scroll_offset == 0);
+    assert(selected_index == 1 && scroll_offset == 0);
     press(FROG_BTN_RIGHT);
     prepare_enhanced_grid();
-    assert(selected_index == 3 && scroll_offset == 1);
+    assert(selected_index == 2 && scroll_offset == 1);
     for (int i = 0; i < 5; i++) render_enhanced_home(framebuffer);
     float position = enhanced_home_visible_offset;
     assert(position > 0.0f && position < 1.0f);
@@ -738,8 +746,8 @@ static void test_ribbon(const char *root) {
     int platforms = enhanced_home_platform_count();
     assert(selected_index == entry_count - 1);
     assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
-    assert(enhanced_home_index(platforms) == platforms + 2);
-    assert(scroll_offset == platforms + 3 - ENHANCED_HOME_VISIBLE);
+    assert(enhanced_home_index(platforms) == platforms + 3);
+    assert(scroll_offset == platforms + 4 - ENHANCED_HOME_VISIBLE);
     press(FROG_BTN_RIGHT);
     assert(enhanced_home_kind == ENHANCED_HOME_SETTINGS);
     press(FROG_BTN_A);
@@ -803,8 +811,8 @@ static void test_ribbon(const char *root) {
     assert(!settings_menu_active && entry_count == stored_count + 1);
     prepare_enhanced_grid();
     assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
-    assert(enhanced_home_index(enhanced_home_platform_count()) == platforms + 1);
-    assert(scroll_offset == enhanced_home_platform_count() + 3 - ENHANCED_HOME_VISIBLE);
+    assert(enhanced_home_index(enhanced_home_platform_count()) == platforms + 2);
+    assert(scroll_offset == enhanced_home_platform_count() + 4 - ENHANCED_HOME_VISIBLE);
     press(FROG_BTN_RIGHT);
     assert(enhanced_home_kind == ENHANCED_HOME_APPS);
     press(FROG_BTN_RIGHT);
@@ -831,25 +839,25 @@ static void test_ribbon(const char *root) {
     enhanced_home_kind = ENHANCED_HOME_PLATFORM;
     selected_index = 1;
     prepare_enhanced_grid();
-    assert(enhanced_home_index(enhanced_home_platform_count()) == 0);
-    assert(strcmp(enhanced_grid_names[0], entries[1].name) == 0);
+    assert(enhanced_home_index(enhanced_home_platform_count()) == 1);
+    assert(strcmp(enhanced_grid_names[1], entries[1].name) == 0);
 
-    /* Zero and one platform both retain exactly three utilities. */
+    /* Zero and one platform both retain Favorites and the three trailing utilities. */
     entries[0] = entries[1];
     entry_count = 1;
     selected_index = scroll_offset = 0;
     prepare_enhanced_grid();
     render_enhanced_home(framebuffer);
-    assert(enhanced_grid_count == 4 && enhanced_home_kind == ENHANCED_HOME_PLATFORM);
+    assert(enhanced_grid_count == 5 && enhanced_home_kind == ENHANCED_HOME_PLATFORM);
     press(FROG_BTN_RIGHT);
     assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
     entry_count = 0;
-    enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+    enhanced_home_kind = ENHANCED_HOME_FAVOURITES;
     prepare_enhanced_grid();
     render_enhanced_home(framebuffer);
-    assert(enhanced_grid_count == 3 && enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    assert(enhanced_grid_count == 4 && enhanced_home_kind == ENHANCED_HOME_FAVOURITES);
     press(FROG_BTN_LEFT);
-    assert(enhanced_home_kind == ENHANCED_HOME_RECENTS);
+    assert(enhanced_home_kind == ENHANCED_HOME_FAVOURITES);
     press(FROG_BTN_RIGHT);
     press(FROG_BTN_RIGHT);
     press(FROG_BTN_RIGHT);
@@ -984,9 +992,10 @@ static void ribbon_step(FrogButton button, int expected, int platforms) {
     input_set_ext_raw(0);
     retro_run();
     assert(enhanced_home_index(platforms) == expected);
+    int total = platforms + 4;
     int offset = expected - 2;
     if (offset < 0) offset = 0;
-    if (offset > platforms - 2) offset = platforms - 2;
+    if (offset > total - ENHANCED_HOME_VISIBLE) offset = total - ENHANCED_HOME_VISIBLE;
     if (offset < 0) offset = 0;
     assert(scroll_offset == offset && enhanced_home_visible_offset == (float)offset);
     if (expected != previous) {
@@ -1016,14 +1025,14 @@ static void test_home_ribbon_presentation(void) {
     for (size_t i = 0; i < sizeof counts / sizeof counts[0]; i++) {
         entry_count = counts[i];
         selected_index = 0;
-        enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+        enhanced_home_kind = ENHANCED_HOME_FAVOURITES;
         enhanced_grid_prepared = false;
         retro_run();
         int platforms = enhanced_home_platform_count();
-        for (int index = 1; index < platforms + 3; index++)
+        for (int index = 1; index < platforms + 4; index++)
             ribbon_step(FROG_BTN_RIGHT, index, platforms);
-        ribbon_step(FROG_BTN_RIGHT, platforms + 2, platforms);
-        for (int index = platforms + 1; index >= 0; index--)
+        ribbon_step(FROG_BTN_RIGHT, platforms + 3, platforms);
+        for (int index = platforms + 2; index >= 0; index--)
             ribbon_step(FROG_BTN_LEFT, index, platforms);
         ribbon_step(FROG_BTN_LEFT, 0, platforms);
     }
@@ -1410,6 +1419,124 @@ static void test_apps_coverflow(const char *root) {
     puts("PASS Apps shared CoverFlow, artwork, device restrictions, dispatch, submenus and return");
 }
 
+static void test_enhanced_collections(const char *root) {
+    char first[MAX_PATH_LEN], second[MAX_PATH_LEN], capture[MAX_PATH_LEN], folder[MAX_PATH_LEN];
+    snprintf(first, sizeof first, "%s/AFirst/First.nes", root);
+    snprintf(second, sizeof second, "%s/NoArtwork/Example.nes", root);
+    snprintf(test_p9_favorites, sizeof test_p9_favorites, "%s/.favorites", root);
+    snprintf(test_p9_history, sizeof test_p9_history, "%s/.history", root);
+    write_fixture(test_p9_favorites, "");
+    write_fixture(test_p9_history, "");
+    favorites_load();
+    recent_games_load();
+    settings_graphical_home = 1;
+    strcpy(current_path, ROMS_PATH);
+    scan_directory(current_path);
+    enhanced_home_kind = ENHANCED_HOME_FAVOURITES;
+    assert(enhanced_home_index(enhanced_home_platform_count()) == 0);
+    press(FROG_BTN_A);
+    assert(enhanced_favorites_view() && entry_count == 0);
+    prepare_enhanced_library(false);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_FAVOURITES);
+
+    assert(favorites_toggle_path("quicknes", "Same name", first));
+    assert(favorites_toggle_path("quicknes", "Same name", second));
+    favorites_load();
+    assert(favorites_get_count() == 2);
+    press(FROG_BTN_A);
+    assert(enhanced_favorites_view() && entry_count == 2);
+    int first_index = !strcmp(collection_game_path(0), first) ? 0 : 1;
+    selected_index = first_index;
+    prepare_enhanced_library(false);
+    assert(!strcmp(coverflow_title_text, "Retitled"));
+    press(FROG_BTN_A);
+    assert(enhanced_details_view());
+    press(FROG_BTN_Y);
+    assert(enhanced_details_view() && favorites_get_count() == 1);
+    assert(!strcmp(collection_game_path(selected_index), first));
+    press(FROG_BTN_B);
+    assert(enhanced_favorites_view() && entry_count == 1 &&
+           !strcmp(collection_game_path(selected_index), second));
+    ra_game_fixture(root, true);
+    press(FROG_BTN_A);
+    assert(enhanced_details_view());
+    prepare_enhanced_library(false);
+    prepare_details_achievements(root);
+    press(FROG_BTN_L2);
+    assert(enhanced_achievements_view());
+    press(FROG_BTN_B);
+    assert(enhanced_details_view() &&
+           !strcmp(collection_game_path(selected_index), second));
+    press(FROG_BTN_A);
+    assert(enhanced_favorites_view());
+    FILE *launch = fopen(LAUNCH_FILE, "r");
+    char target[1024];
+    assert(launch && fgets(target, sizeof target, launch) && fgets(target, sizeof target, launch));
+    target[strcspn(target, "\r\n")] = 0;
+    assert(!strcmp(target, second));
+    fclose(launch);
+    ra_game_fixture(root, false);
+    press(FROG_BTN_A);
+    press(FROG_BTN_Y);
+    assert(enhanced_details_view() && favorites_get_count() == 0);
+    press(FROG_BTN_B);
+    assert(enhanced_favorites_view() && entry_count == 0);
+    press(FROG_BTN_B);
+    assert(enhanced_home_view());
+
+    write_fixture(test_p9_history, "");
+    recent_games_load();
+    recent_games_add("quicknes", "Same name", first);
+    recent_games_add("quicknes", "Same name", second);
+    recent_games_add("quicknes", "Same name", first);
+    recent_games_load();
+    assert(recent_games_get_count() == 2 && !strcmp(recent_games_get_list()[0].full_path, first));
+    assert(snprintf(test_screenshot_root, sizeof test_screenshot_root, "%s/.captures", root) <
+           (int)sizeof test_screenshot_root);
+    assert(mkdir(test_screenshot_root, 0700) == 0);
+    assert(snprintf(folder, sizeof folder, "%s/AFirst", test_screenshot_root) < (int)sizeof folder);
+    assert(mkdir(folder, 0700) == 0);
+    assert(snprintf(capture, sizeof capture, "%s/First.scr.bmp", folder) < (int)sizeof capture);
+    write_cover_bmp(capture, 640, 480);
+    enhanced_home_kind = ENHANCED_HOME_RECENTS;
+    press(FROG_BTN_A);
+    assert(enhanced_recents_view());
+    selected_index = 0;
+    long long preparation_started = monotonic_ms();
+    allocations = allocation_bytes = largest_allocation = 0;
+    measure_allocations = true;
+    prepare_enhanced_library(false);
+    prepare_details_metrics();
+    prepare_enhanced_recents();
+    measure_allocations = false;
+    printf("P9 cold preparation: %lld ms; %zu bytes requested by wrapped malloc; "
+           "largest %zu bytes; selected screenshot %zu bytes\n",
+           monotonic_ms() - preparation_started, allocation_bytes, largest_allocation,
+           (size_t)enhanced_recents_screenshot.width * enhanced_recents_screenshot.height * 2);
+    assert(enhanced_recents_screenshot.width == 320 && enhanced_recents_screenshot.height == 240);
+    press(FROG_BTN_X);
+    assert(enhanced_details_view());
+    press(FROG_BTN_B);
+    assert(enhanced_recents_view() && selected_index == 0);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    prepare_enhanced_recents();
+    assert(selected_index == 1 && !enhanced_recents_screenshot.data);
+    press(FROG_BTN_RIGHT);
+    assert(selected_index == 1);
+    assert(unlink(capture) == 0);
+    write_fixture(capture, "bad file");
+    Thumbnail screen = {0};
+    assert(!load_bounded_screenshot_thumbnail(first, &screen));
+    write_cover_bmp(capture, 641, 480);
+    assert(!load_bounded_screenshot_thumbnail(first, &screen));
+    press(FROG_BTN_B);
+    prepare_enhanced_recents();
+    assert(enhanced_home_view() && !enhanced_recents_screenshot.data);
+    puts("PASS P9 cross-platform collections, metadata, favorite removal, history, screenshots and Details");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
@@ -1485,6 +1612,7 @@ int main(int argc, char **argv) {
     assert(entry_count == 2 && entries[0].is_dir && entries[1].is_dir);
     assert(strcmp(entries[selected_index].name, "AFirst") == 0);
     input_reset_defaults();
+    enhanced_home_kind = ENHANCED_HOME_PLATFORM;
     press(FROG_BTN_RIGHT);
     assert(strcmp(entries[selected_index].name, "NoArtwork") == 0);
     assert(system_icon_get(entries[selected_index].name) == NULL);
@@ -1676,5 +1804,6 @@ int main(int argc, char **argv) {
     test_platform_filelists(argv[1]);
     test_ra_home(argv[1]);
     test_enhanced_settings_integration();
+    test_enhanced_collections(argv[1]);
     return 0;
 }

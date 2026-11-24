@@ -153,3 +153,7 @@ P8 shares the game CoverFlow window, easing, distance scaling, draw order and as
 3. P11 — Frontend Final Audit.
 
 PicoArch changes, core compatibility and the RetroAchievements runtime are separate future work. Complete the outstanding retests and review the cumulative frontend PR before authorizing integration. Update the parent submodule only after the frontend integration has been authorized and its resulting source tree is verified.
+
+### P9 candidate scope
+
+The P9 branch is based on the P8 documentation tip and leaves PR #7 and its tested implementation tag independent. Enhanced Home now orders Favorites, platforms, Recents, Apps and Settings. Favorites shares library CoverFlow, while Recents uses its own selected-game presentation. See [collection adapters and file contracts](enhanced-game-information.md#p9-collection-adapters). P9 awaits physical acceptance. The ten P8 retests above remain pending. P10 and P11 have not started.

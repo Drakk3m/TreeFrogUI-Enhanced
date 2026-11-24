@@ -8,6 +8,37 @@
 static FavoriteGame favorites[MAX_FAVORITES];
 static int favorite_count = 0;
 
+static int favorite_index_by_path(const char *full_path) {
+    if (!full_path || !*full_path) return -1;
+    for (int i = 0; i < favorite_count; i++)
+        if (strcmp(favorites[i].full_path, full_path) == 0) return i;
+    return -1;
+}
+
+static void favorite_set_text(char *destination, size_t capacity, const char *source) {
+    if (!capacity) return;
+    snprintf(destination, capacity, "%s", source ? source : "");
+}
+
+static void favorite_set_display(FavoriteGame *favorite) {
+    snprintf(favorite->display_name, sizeof favorite->display_name, "%.*s (%.*s)",
+             (int)sizeof favorite->game_name - 4, favorite->game_name,
+             (int)sizeof favorite->core_name - 1, favorite->core_name);
+}
+
+static bool favorite_add(const char *core_name, const char *game_name, const char *full_path) {
+    if (favorite_count >= MAX_FAVORITES) return false;
+    FavoriteGame *favorite = &favorites[favorite_count];
+    memset(favorite, 0, sizeof *favorite);
+    favorite_set_text(favorite->core_name, sizeof favorite->core_name, core_name);
+    favorite_set_text(favorite->game_name, sizeof favorite->game_name, game_name);
+    favorite_set_text(favorite->full_path, sizeof favorite->full_path, full_path);
+    favorite_set_display(favorite);
+    favorite_count++;
+    favorites_save();
+    return true;
+}
+
 void favorites_init(void) {
     favorite_count = 0;
     favorites_load();
@@ -21,7 +52,8 @@ void favorites_load(void) {
     }
 
     favorite_count = 0;
-    char line[512];
+    char line[sizeof ((FavoriteGame *)0)->core_name +
+              sizeof ((FavoriteGame *)0)->game_name + sizeof ((FavoriteGame *)0)->full_path + 2];
 
     while (fgets(line, sizeof(line), fp) && favorite_count < MAX_FAVORITES) {
         // Remove newline
@@ -34,13 +66,16 @@ void favorites_load(void) {
             char *separator2 = strchr(separator1 + 1, '|');
             if (separator2) {
                 *separator2 = '\0';
-                strncpy(favorites[favorite_count].core_name, line, sizeof(favorites[favorite_count].core_name) - 1);
-                strncpy(favorites[favorite_count].game_name, separator1 + 1, sizeof(favorites[favorite_count].game_name) - 1);
-                strncpy(favorites[favorite_count].full_path, separator2 + 1, sizeof(favorites[favorite_count].full_path) - 1);
+                memset(&favorites[favorite_count], 0, sizeof favorites[favorite_count]);
+                favorite_set_text(favorites[favorite_count].core_name,
+                                  sizeof favorites[favorite_count].core_name, line);
+                favorite_set_text(favorites[favorite_count].game_name,
+                                  sizeof favorites[favorite_count].game_name, separator1 + 1);
+                favorite_set_text(favorites[favorite_count].full_path,
+                                  sizeof favorites[favorite_count].full_path, separator2 + 1);
 
                 // Create display name
-                snprintf(favorites[favorite_count].display_name, sizeof(favorites[favorite_count].display_name),
-                        "%s (%s)", favorites[favorite_count].game_name, favorites[favorite_count].core_name);
+                favorite_set_display(&favorites[favorite_count]);
 
                 favorite_count++;
             }
@@ -86,15 +121,28 @@ bool favorites_toggle(const char *core_name, const char *game_name, const char *
             return false; // List full
         }
 
-        strncpy(favorites[favorite_count].core_name, core_name, sizeof(favorites[favorite_count].core_name) - 1);
-        strncpy(favorites[favorite_count].game_name, game_name, sizeof(favorites[favorite_count].game_name) - 1);
-        strncpy(favorites[favorite_count].full_path, full_path, sizeof(favorites[favorite_count].full_path) - 1);
-        snprintf(favorites[favorite_count].display_name, sizeof(favorites[favorite_count].display_name),
-                "%s (%s)", game_name, core_name);
-        favorite_count++;
-        favorites_save();
-        return true; // Added
+        return favorite_add(core_name, game_name, full_path); // Added
     }
+}
+
+bool favorites_toggle_path(const char *core_name, const char *game_name, const char *full_path) {
+    if (!full_path || !*full_path || strlen(full_path) >= sizeof favorites[0].full_path ||
+        strpbrk(full_path, "|\r\n")) return false;
+    int existing_index = favorite_index_by_path(full_path);
+    if (existing_index >= 0) {
+        favorites_remove_by_index(existing_index);
+        return false;
+    }
+    return favorite_add(core_name, game_name, full_path);
+}
+
+bool favorites_is_favorited_path(const char *full_path) {
+    return favorite_index_by_path(full_path) >= 0;
+}
+
+bool favorites_remove_by_path(const char *full_path) {
+    int index = favorite_index_by_path(full_path);
+    return index >= 0 && favorites_remove_by_index(index);
 }
 
 bool favorites_remove_by_index(int index) {

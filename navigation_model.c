@@ -47,6 +47,7 @@ static bool ra_set_valid(const NavCatalog *catalog, const char *platform, const 
 
 void nav_model_init(NavModel *model, bool enabled) {
     *model = (NavModel){ .enhanced_home = enabled };
+    model->state.details_return = NAV_GAME_LIBRARY;
     nav_settings_set_hub(model, settings_hub, sizeof settings_hub / sizeof settings_hub[0]);
 }
 
@@ -80,9 +81,10 @@ const NavSettingsLevel *nav_settings_level(const NavModel *model) {
 
 static NavEffect return_to_screen(NavModel *model, const NavCatalog *catalog, NavScreen screen) {
     NavState *state = &model->state;
-    if (screen == NAV_RECENTS || screen == NAV_APPS) {
+    if (screen == NAV_RECENTS || screen == NAV_APPS || screen == NAV_FAVORITES) {
         state->screen = screen;
-        return screen == NAV_RECENTS ? NAV_EFFECT_RETURN_TO_RECENTS : NAV_EFFECT_RETURN_TO_APPS;
+        return screen == NAV_RECENTS ? NAV_EFFECT_RETURN_TO_RECENTS
+             : screen == NAV_FAVORITES ? NAV_EFFECT_RETURN_TO_FAVORITES : NAV_EFFECT_RETURN_TO_APPS;
     }
     if (!platform_exists(catalog, state->platform_id)) {
         state->platform_id[0] = '\0';
@@ -152,9 +154,9 @@ static NavEffect route_screen(NavModel *model, const NavCatalog *catalog, NavInp
         if (state->screen == NAV_ACHIEVEMENTS_GALLERY)
             return return_to_screen(model, catalog, NAV_GAME_DETAILS);
         if (state->screen == NAV_GAME_DETAILS)
-            return return_to_screen(model, catalog, NAV_GAME_LIBRARY);
+            return return_to_screen(model, catalog, state->details_return);
         if (state->screen == NAV_GAME_LIBRARY || state->screen == NAV_RECENTS ||
-            state->screen == NAV_APPS)
+            state->screen == NAV_APPS || state->screen == NAV_FAVORITES)
             return return_to_screen(model, catalog, NAV_PLATFORM_HOME);
         return NAV_EFFECT_NONE;
     }
@@ -169,14 +171,16 @@ static NavEffect route_screen(NavModel *model, const NavCatalog *catalog, NavInp
     if (input == NAV_INPUT_GALLERY)
         return NAV_EFFECT_NONE;
     if (input == NAV_INPUT_CONFIRM) {
-        if (state->screen == NAV_RECENTS || state->screen == NAV_APPS) return NAV_EFFECT_NONE;
+        if (state->screen == NAV_APPS) return NAV_EFFECT_NONE;
         if (state->screen == NAV_PLATFORM_HOME) {
             if (!platform_exists(catalog, state->platform_id)) return NAV_EFFECT_NONE;
             state->screen = NAV_GAME_LIBRARY;
             return NAV_EFFECT_OPEN_LIBRARY;
         }
         if (!game_exists(catalog, state->platform_id, state->game_id)) return NAV_EFFECT_NONE;
-        if (state->screen == NAV_GAME_LIBRARY) {
+        if (state->screen == NAV_GAME_LIBRARY || state->screen == NAV_RECENTS ||
+            state->screen == NAV_FAVORITES) {
+            state->details_return = state->screen;
             state->screen = NAV_GAME_DETAILS;
             return NAV_EFFECT_OPEN_DETAILS;
         }
