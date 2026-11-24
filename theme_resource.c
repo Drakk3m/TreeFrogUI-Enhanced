@@ -44,6 +44,10 @@ struct ThemeResourceManager {
 static const ThemePresentation defaults = {
     .transition_ms = 180,
     .icon_scale_percent = 115,
+    .recents_screenshot_dim = 96,
+    .recents_shadow_opacity = 166,
+    .coverflow_selection_opacity = 142,
+    .home_selection_opacity = 140,
     .icon_spacing = 8,
     .coverflow_neighbors = 1,
     .coverflow_side_scale_percent = 75,
@@ -152,7 +156,11 @@ static bool scoped_id(const char *id, const char *prefix, const char *suffix) {
 static ThemeResourceKind resource_kind(const char *id) {
     if (strcmp(id, "home.background") == 0 || scoped_id(id, "platform.", ".background"))
         return THEME_RESOURCE_BACKGROUND;
-    if (scoped_id(id, "platform.", ".icon")) return THEME_RESOURCE_PLATFORM_ICON;
+    if (scoped_id(id, "platform.", ".icon") ||
+        strcmp(id, "home.favourites.icon") == 0 ||
+        strcmp(id, "home.recents.icon") == 0 ||
+        strcmp(id, "home.apps.icon") == 0 ||
+        strcmp(id, "home.settings.icon") == 0) return THEME_RESOURCE_PLATFORM_ICON;
     if (scoped_id(id, "app.", ".icon")) return THEME_RESOURCE_APP_ICON;
     if (scoped_id(id, "settings.", ".icon")) return THEME_RESOURCE_SETTINGS_ICON;
     if (strcmp(id, "cover.placeholder") == 0) return THEME_RESOURCE_COVER_PLACEHOLDER;
@@ -193,6 +201,14 @@ static bool add_resource(Manifest *manifest, const char *id, const char *path,
 }
 
 static bool parse_presentation(ThemePresentation *p, const char *key, const char *value) {
+    if (strcmp(key, "recents_screenshot_dim") == 0)
+        return number(value, 0, 255, &p->recents_screenshot_dim);
+    if (strcmp(key, "recents_shadow_opacity") == 0)
+        return number(value, 0, 255, &p->recents_shadow_opacity);
+    if (strcmp(key, "coverflow_selection_opacity") == 0)
+        return number(value, 0, 255, &p->coverflow_selection_opacity);
+    if (strcmp(key, "home_selection_opacity") == 0)
+        return number(value, 0, 255, &p->home_selection_opacity);
     if (strcmp(key, "transition_ms") == 0) return number(value, 0, 500, &p->transition_ms);
     if (strcmp(key, "icon_scale_percent") == 0) return number(value, 100, 150, &p->icon_scale_percent);
     if (strcmp(key, "icon_spacing") == 0) return number(value, 0, 64, &p->icon_spacing);

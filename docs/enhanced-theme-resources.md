@@ -166,3 +166,21 @@ PNG alpha and aspect ratio are preserved. Files follow the ordinary icon limits,
 ## Favorites ribbon icon
 
 Enhanced Home reuses the optional platform.favourites.icon resource for the Favorites destination. It is a virtual destination and has no ROM directory. The resource uses existing icon limits and aspect-fit alpha drawing. If the resource is absent or cannot be decoded, Home uses its native star symbol. The empty collection uses the same native star silhouette and themed text colors. Existing themes need no changes.
+
+## P10 resource resolution
+
+The pack-local manifest remains version 1. The P10 additions are optional. Settings, theme selection, fonts, user colors, imported schemes and native pack artwork keep their existing persistence and precedence. The manager is active only for Enhanced mode and native rendered themes, with the selected Background Theme Pack. A disabled background, an explicit wallpaper and an imported scheme preserve their native behavior.
+
+| Resource | Consumer and precedence |
+| --- | --- |
+| home.favourites.icon | Home Favorites artwork. Valid override, then platform.favourites.icon (P9), then native icon art or star. |
+| home.recents.icon, home.apps.icon, home.settings.icon | Home destinations. Valid override, then the individual native glyph. |
+| cover.placeholder | Missing cover treatment in Game CoverFlow, Favorites, Details and Recents. A real library cover wins. Recents prefers its valid themed platform icon before the generic placeholder. The native silhouette or box remains the final fallback. |
+| achievement.badge | Gallery placeholder only. A real badge wins. The established trophy treatment remains the final fallback. |
+| ra.trophy, settings.<key>.icon, app.<key>.icon | Existing meanings and native fallbacks remain available. Settings keys are category keys, not individual operation identifiers. |
+
+The following optional [presentation] values accept integer opacity in 0–255. Defaults recreate the existing treatment: home_selection_opacity=140, coverflow_selection_opacity=142, recents_screenshot_dim=96 and recents_shadow_opacity=166. A value of zero removes the corresponding effect. Shared renderer colors still drive text, panel, selection and disabled colors. Reduced Motion remains a user accessibility preference.
+
+The existing decoded icon LRU remains capped at 12 entries. Optional generic cover, badge and Recents platform handles borrow this storage and are cleared on eviction and theme changes. The existing screenshot lifetime and 320×240 RGB565 budget are unchanged. The banner continues to own active/pending frames. A malformed manifest leaves native assets available. Malformed optional image data falls through to the consumer's native fallback. Themes may omit the manifest entirely.
+
+See [source inventory](p10-theme-inventory.md) and [ROM Studio integration](rom-studio-theme-manager.md). Per-option Settings art, per-role HUD/dialog art, external arrows, dedicated loading art and an avatar placeholder have no editable identifiers in this candidate. Their current native rendering and shared colors are preserved. Unknown RAW layouts remain read-only. Temporary text rendering allocations remain a P11 audit item.

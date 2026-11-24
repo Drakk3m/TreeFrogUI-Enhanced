@@ -157,3 +157,7 @@ PicoArch changes, core compatibility and the RetroAchievements runtime are separ
 ### P9 candidate scope
 
 The P9 branch is based on the P8 documentation tip and leaves PR #7 and its tested implementation tag independent. Enhanced Home now orders Favorites, platforms, Recents, Apps and Settings. Favorites shares library CoverFlow, while Recents uses its own selected-game presentation. See [collection adapters and file contracts](enhanced-game-information.md#p9-collection-adapters). P9 awaits physical acceptance. The ten P8 retests above remain pending. P10 and P11 have not started.
+
+## P10 appearance boundary
+
+P10 theme packs can override Home utility artwork and generic missing-media treatments. Platform and collection identities, Home ribbon ordering, launch paths, Reduced Motion, Settings operations and Back/START behavior continue to be owned by the existing navigation and Settings models. A failed theme asset therefore changes the artwork fallback without changing the selected destination.
