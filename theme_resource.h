@@ -44,6 +44,10 @@ typedef struct {
 
 typedef struct {
     unsigned transition_ms;
+    unsigned recents_screenshot_dim;
+    unsigned recents_shadow_opacity;
+    unsigned coverflow_selection_opacity;
+    unsigned home_selection_opacity;
     unsigned icon_scale_percent;
     unsigned icon_spacing;
     unsigned coverflow_neighbors;

@@ -498,7 +498,16 @@ static void test_enhanced_art(const char *root) {
                        "[resource.home.background]\npath=wall.bmp\n"
                        "[resource.platform.afirst.icon]\npath=icon.png\n"
                        "[resource.platform.noartwork.icon]\npath=bad.png\n"
-                       "[resource.platform.noartwork.background]\npath=bad.png\n");
+                       "[resource.platform.noartwork.background]\npath=bad.png\n"
+                       "[presentation]\nrecents_screenshot_dim=72\n"
+                       "recents_shadow_opacity=190\ncoverflow_selection_opacity=170\n"
+                       "home_selection_opacity=160\n"
+                       "[resource.home.apps.icon]\npath=icon.png\n"
+                       "[resource.home.favourites.icon]\npath=bad.png\n"
+                       "[resource.platform.favourites.icon]\npath=icon.png\n"
+                       "[resource.cover.placeholder]\npath=icon.png\n"
+                       "[resource.achievement.badge]\npath=icon.png\n"
+);
 
     theme_pack_count = 2;
     strcpy(theme_pack_files[1], "Pack");
@@ -514,7 +523,12 @@ static void test_enhanced_art(const char *root) {
     settings_render_scheme_idx = 0;
     assert(enhanced_theme_sync() && enhanced_theme);
     ThemeResourceDescriptor bad;
+    ThemeResourceDescriptor placeholder, badge;
     assert(theme_resource_resolve(enhanced_theme, "platform.noartwork.icon", &bad));
+    assert(theme_resource_resolve(enhanced_theme, "cover.placeholder", &placeholder));
+    assert(placeholder.kind == THEME_RESOURCE_COVER_PLACEHOLDER);
+    assert(theme_resource_resolve(enhanced_theme, "achievement.badge", &badge));
+    assert(badge.kind == THEME_RESOURCE_ACHIEVEMENT_BADGE);
     int width, height;
     assert(!enhanced_decode_image(&bad, &width, &height, 4)); /* valid header, bad pixel data */
 
@@ -528,6 +542,26 @@ static void test_enhanced_art(const char *root) {
     assert(enhanced_icon && strcmp(enhanced_icon->path, "icon.png") == 0);
     SystemIcon *fallback_icon = system_icon_get("NoArtwork");
     assert(fallback_icon && strcmp(fallback_icon->path, legacy_icon) == 0);
+    strcpy(current_path, ROMS_PATH);
+    prepare_cover_placeholder();
+    assert(cover_placeholder_icon && strcmp(cover_placeholder_icon->path, "icon.png") == 0);
+    prepare_achievement_placeholder();
+    assert(achievement_badge_icon == cover_placeholder_icon);
+    assert(system_icon_get(FAVOURITES_ENTRY_NAME) == cover_placeholder_icon);
+    const ThemePresentation *visuals = theme_resource_presentation(enhanced_theme);
+    assert(visuals->recents_screenshot_dim == 72 && visuals->recents_shadow_opacity == 190);
+    assert(visuals->coverflow_selection_opacity == 170 && visuals->home_selection_opacity == 160);
+    for (int i = 0; i < 6; i++) {
+        settings_theme_pack_idx = 0;
+        assert(enhanced_theme_sync() && !enhanced_theme);
+        assert(!cover_placeholder_icon && !achievement_badge_icon);
+        settings_theme_pack_idx = 1;
+        assert(enhanced_theme_sync() && enhanced_theme);
+        prepare_cover_placeholder();
+        assert(cover_placeholder_icon);
+    }
+    puts("PASS P10 theme fallback, presentation values and repeated theme switches");
+
 
     /* A monochrome 640x480 fixture exercises the production decoder and
      * allocation path without including fonts or SD activity in the sample. */

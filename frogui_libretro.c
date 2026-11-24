@@ -5804,6 +5804,12 @@ typedef struct {
 static SystemIcon system_icons[SYSTEM_ICON_CACHE_N];
 static unsigned system_icon_clock;
 static int system_icon_pack = -1;
+static SystemIcon *cover_placeholder_icon;
+static SystemIcon *achievement_badge_icon;
+static SystemIcon *recents_platform_icon;
+static bool recents_platform_icon_probed;
+static bool cover_placeholder_probed;
+static bool achievement_badge_probed;
 #define SYSTEM_ICON_MISSING_N 32
 static char system_icon_missing[SYSTEM_ICON_MISSING_N][512];
 static int system_icon_missing_count;
@@ -5831,6 +5837,11 @@ static void system_icons_clear(void) {
     system_icon_missing_count = 0;
     enhanced_grid_prepared = false;
     enhanced_home_frame = SYSTEM_CAROUSEL_FRAMES;
+    cover_placeholder_icon = NULL;
+    achievement_badge_icon = NULL;
+    recents_platform_icon = NULL;
+    recents_platform_icon_probed = false;
+    cover_placeholder_probed = achievement_badge_probed = false;
 }
 
 static bool enhanced_theme_sync(void) {
@@ -6035,6 +6046,18 @@ static SystemIcon *system_icon_load(const char *path,
     }
     stbi_image_free(rgba);
 
+    if (cover_placeholder_icon == &system_icons[victim]) {
+        cover_placeholder_icon = NULL;
+        cover_placeholder_probed = false;
+    }
+    if (achievement_badge_icon == &system_icons[victim]) {
+        achievement_badge_icon = NULL;
+        achievement_badge_probed = false;
+    }
+    if (recents_platform_icon == &system_icons[victim]) {
+        recents_platform_icon = NULL;
+        recents_platform_icon_probed = false;
+    }
     free(system_icons[victim].pixels);
     free(system_icons[victim].alpha);
     system_icons[victim].pixels = pixels;
@@ -6055,8 +6078,13 @@ static SystemIcon *system_icon_get(const char *folder) {
         system_icon_pack = settings_icon_pack_idx;
     }
     ThemeResourceDescriptor resource;
-    const char *resource_folder = strcmp(folder, FAVOURITES_ENTRY_NAME) == 0
-                                ? "favourites" : folder;
+    const bool is_favourites = strcmp(folder, FAVOURITES_ENTRY_NAME) == 0;
+    if (settings_graphical_home && enhanced_theme && is_favourites &&
+        theme_resource_resolve(enhanced_theme, "home.favourites.icon", &resource)) {
+        SystemIcon *icon = system_icon_load(resource.path, &resource);
+        if (icon) return icon;
+    }
+    const char *resource_folder = is_favourites ? "favourites" : folder;
     if (settings_graphical_home && enhanced_theme &&
         enhanced_platform_resource(resource_folder, "icon", &resource) &&
         resource.kind == THEME_RESOURCE_PLATFORM_ICON) {
@@ -6156,6 +6184,18 @@ static void enhanced_home_move(int direction) {
 
 /* Resolve the entire transition's visible span on state changes. Painting
  * borrows pixels from the existing LRU and never calls an artwork loader. */
+static const char *enhanced_home_art_key(int index, int platform_first, int platforms) {
+    if (index == 0) return FAVOURITES_ENTRY_NAME;
+    int platform = index - enhanced_home_ribbon_offset();
+    if (platform < platforms) return entries[platform_first + platform].name;
+    switch (enhanced_home_item_kind(index, platforms)) {
+        case ENHANCED_HOME_RECENTS: return "home.recents.icon";
+        case ENHANCED_HOME_APPS: return "home.apps.icon";
+        case ENHANCED_HOME_SETTINGS: return "home.settings.icon";
+        default: return "";
+    }
+}
+
 static void prepare_enhanced_grid(void) {
     if (!enhanced_home_view()) {
         enhanced_grid_prepared = false;
@@ -6195,21 +6235,21 @@ static void prepare_enhanced_grid(void) {
                 enhanced_grid_count == count && system_icon_pack == settings_icon_pack_idx;
     for (size_t i = 0; same && i < count; i++) {
         int index = first + (int)i;
-        int platform_index = index - enhanced_home_ribbon_offset();
-        const char *name = index == 0 ? FAVOURITES_ENTRY_NAME
-                         : platform_index >= 0 && platform_index < platforms
-                         ? entries[platform_first + platform_index].name : "";
+        const char *name = enhanced_home_art_key(index, platform_first, platforms);
         same = strcmp(enhanced_grid_names[i], name) == 0;
     }
     if (same) return;
     for (size_t i = 0; i < count; i++) {
         int index = first + (int)i;
-        int platform_index = index - enhanced_home_ribbon_offset();
-        const char *name = index == 0 ? FAVOURITES_ENTRY_NAME
-                         : platform_index >= 0 && platform_index < platforms
-                         ? entries[platform_first + platform_index].name : "";
+        const char *name = enhanced_home_art_key(index, platform_first, platforms);
         strcpy(enhanced_grid_names[i], name);
-        enhanced_grid_icons[i] = name[0] ? system_icon_get(name) : NULL;
+        enum EnhancedHomeItemKind kind = enhanced_home_item_kind(index, platforms);
+        ThemeResourceDescriptor resource;
+        if (kind == ENHANCED_HOME_FAVOURITES || kind == ENHANCED_HOME_PLATFORM)
+            enhanced_grid_icons[i] = system_icon_get(name);
+        else
+            enhanced_grid_icons[i] = theme_resource_resolve(enhanced_theme, name, &resource)
+                                   ? system_icon_load(resource.path, &resource) : NULL;
     }
     enhanced_grid_first = first;
     enhanced_grid_count = count;
@@ -6406,6 +6446,7 @@ static void render_ra_home(uint16_t *fb) {
 }
 
 static void render_enhanced_home(uint16_t *fb) {
+    const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
     float progress = 1.0f;
     if (enhanced_home_frame < SYSTEM_CAROUSEL_FRAMES)
         progress = (float)enhanced_home_frame / SYSTEM_CAROUSEL_FRAMES;
@@ -6441,7 +6482,8 @@ static void render_enhanced_home(uint16_t *fb) {
         int y = center_y - size / 2;
         if (active)
             render_rounded_rect_alpha(fb, x - padding, y - padding, size + 2 * padding,
-                                      size + 2 * padding, UI_S(9), COLOR_SELECT_BG, 140);
+                                      size + 2 * padding, UI_S(9), COLOR_SELECT_BG,
+                                      theme ? theme->home_selection_opacity : 140);
 
         uint16_t color = active ? COLOR_SELECT_TEXT : COLOR_TEXT;
         SystemIcon *icon = enhanced_grid_icons[slot];
@@ -6796,6 +6838,14 @@ static bool coverflow_animating(void) {
 }
 
 /* Prepare a bounded card window for the active collection before drawing. */
+static void prepare_cover_placeholder(void) {
+    if (cover_placeholder_probed || !enhanced_theme) return;
+    cover_placeholder_probed = true;
+    ThemeResourceDescriptor resource;
+    if (theme_resource_resolve(enhanced_theme, "cover.placeholder", &resource))
+        cover_placeholder_icon = system_icon_load(resource.path, &resource);
+}
+
 static void prepare_enhanced_library(bool theme_changed) {
     bool apps = enhanced_apps_view();
     int collection = enhanced_favorites_view() ? 1 : enhanced_recents_view() ? 2 : 0;
@@ -6814,6 +6864,7 @@ static void prepare_enhanced_library(bool theme_changed) {
     coverflow_apps = apps;
     coverflow_collection = collection;
     coverflow_apps_generation = apps_scan_generation;
+    if (active && !apps && !settings_menu_active) prepare_cover_placeholder();
     if (!active || entry_count <= 0) return;
     snprintf(coverflow_directory, sizeof coverflow_directory, "%s", current_path);
     if (selected_index < 0) selected_index = 0;
@@ -6968,9 +7019,12 @@ static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     }
     render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4),
                               width + UI_S(8), height + UI_S(8), UI_S(8),
-                              selected ? COLOR_SELECT_BG : COLOR_BG, selected ? 142 : 120);
+                              selected ? COLOR_SELECT_BG : COLOR_BG,
+                              selected ? (theme ? theme->coverflow_selection_opacity : 142) : 120);
     if (cover) {
         render_thumbnail_contained(fb, cover, x, y, width, height);
+    } else if (cover_placeholder_icon) {
+        system_icon_draw(fb, cover_placeholder_icon, x, y, width, height);
     } else {
         /* A card silhouette works with every pack and costs no texture memory. */
         int line = width / 5;
@@ -7335,6 +7389,14 @@ static size_t details_badge_index = (size_t)-1;
 static unsigned details_badge_generation;
 static int details_badge_game = -1;
 
+static void prepare_achievement_placeholder(void) {
+    if (achievement_badge_probed || !enhanced_theme) return;
+    achievement_badge_probed = true;
+    ThemeResourceDescriptor resource;
+    if (theme_resource_resolve(enhanced_theme, "achievement.badge", &resource))
+        achievement_badge_icon = system_icon_load(resource.path, &resource);
+}
+
 static void prepare_details_badge(void) {
     if (!enhanced_achievements_view() || !details_achievements_valid) {
         if (!settings_menu_active) {
@@ -7343,6 +7405,7 @@ static void prepare_details_badge(void) {
         }
         return;
     }
+    prepare_achievement_placeholder();
     if (details_badge_game == details_achievement_game &&
         details_badge_generation == details_achievement_generation &&
         details_badge_index == details_achievement_index) return;
@@ -7359,6 +7422,7 @@ static void prepare_details_badge(void) {
         snprintf(path, sizeof path, "%s/badges/%s.png", RA_SD_DIRECTORY, badge);
         load_bounded_png_thumbnail(path, &details_badge);
     }
+
 }
 
 static void render_details_header(uint16_t *fb, const char *title) {
@@ -7388,6 +7452,8 @@ static void render_enhanced_achievements(uint16_t *fb) {
              details_achievements.achievement_count);
     if (details_badge.data)
         render_thumbnail_contained(fb, &details_badge, x, y, UI_S(64), UI_S(64));
+    else if (achievement_badge_icon)
+        system_icon_draw(fb, achievement_badge_icon, x, y, UI_S(64), UI_S(64));
     else
         render_ra_trophy(fb, x, y, UI_S(48));
     render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
@@ -7447,6 +7513,8 @@ static void render_enhanced_game_details(uint16_t *fb) {
     if (cover) {
         render_thumbnail_projected(fb, cover, center - width / 2, y,
                                    width, height, flip);
+    } else if (cover_placeholder_icon) {
+        system_icon_draw(fb, cover_placeholder_icon, x, y, silhouette_width, height);
     } else {
         int line = silhouette_width / 5;
         render_rounded_rect_alpha(fb, center - line, y + height / 3,

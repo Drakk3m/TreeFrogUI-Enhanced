@@ -1,0 +1,604 @@
+{
+  "contract_version": 1,
+  "manifest_version": 1,
+  "resource_types": {
+    "background": {
+      "formats": [
+        "PNG",
+        "JPEG",
+        "BMP"
+      ],
+      "recommended_dimensions": [
+        640,
+        480
+      ],
+      "maximum_dimensions": [
+        640,
+        480
+      ],
+      "maximum_file_bytes": 1048576,
+      "transparency": "opaque",
+      "scaling": "wallpaper fit",
+      "required_dimensions": null,
+      "aspect_ratio": "user wallpaper policy",
+      "preview": true,
+      "resize": true,
+      "export": true,
+      "restore": true
+    },
+    "icon": {
+      "formats": [
+        "PNG",
+        "JPEG",
+        "BMP"
+      ],
+      "recommended_dimensions": [
+        96,
+        96
+      ],
+      "maximum_dimensions": [
+        256,
+        256
+      ],
+      "maximum_file_bytes": 1048576,
+      "transparency": "PNG alpha",
+      "scaling": "aspect fit",
+      "required_dimensions": null,
+      "aspect_ratio": "preserve",
+      "preview": true,
+      "resize": true,
+      "export": true,
+      "restore": true,
+      "maximum_retained_edge": 160
+    },
+    "sound": {
+      "formats": [
+        "RIFF/WAVE PCM16 LE mono 44100 Hz"
+      ],
+      "maximum_frames": 4410,
+      "maximum_file_bytes": 9332,
+      "required_dimensions": null,
+      "aspect_ratio": "not applicable",
+      "preview": true,
+      "resize": false,
+      "export": true,
+      "restore": true
+    },
+    "protected": {
+      "formats": [],
+      "required_dimensions": null,
+      "aspect_ratio": "not applicable",
+      "preview": false,
+      "resize": false,
+      "export": false,
+      "restore": false
+    }
+  },
+  "resources": [
+    {
+      "id": "home.background",
+      "display_name": "Home background",
+      "category": "Home",
+      "type": "background",
+      "consumers": [
+        "Home"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native pack or background",
+      "aliases": [],
+      "since": "P3",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [
+        "backgrounds",
+        "wallpaper"
+      ],
+      "reference": [
+        "home.background",
+        "main.png",
+        "background"
+      ]
+    },
+    {
+      "id": "platform.<key>.background",
+      "display_name": "Platform background",
+      "category": "Home",
+      "type": "background",
+      "consumers": [
+        "Home"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Home background, then native artwork",
+      "aliases": [],
+      "since": "P3",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "platform.gba.background",
+        "main.png",
+        "background"
+      ]
+    },
+    {
+      "id": "platform.<key>.icon",
+      "display_name": "Platform icon",
+      "category": "Home",
+      "type": "icon",
+      "consumers": [
+        "Home",
+        "Recents"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native icon pack, then native asset or initials",
+      "aliases": [],
+      "since": "P3",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "platform.gba.icon",
+        "icons/platform.png",
+        "platform"
+      ]
+    },
+    {
+      "id": "home.favourites.icon",
+      "display_name": "Favorites icon",
+      "category": "Home",
+      "type": "icon",
+      "consumers": [
+        "Home"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native system artwork or star",
+      "aliases": [
+        "platform.favourites.icon"
+      ],
+      "since": "P10",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "home.favourites.icon",
+        "icons/favorites.png",
+        "star"
+      ]
+    },
+    {
+      "id": "settings.<key>.icon",
+      "display_name": "Category icon",
+      "category": "Settings",
+      "type": "icon",
+      "consumers": [
+        "Settings"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native category text",
+      "aliases": [],
+      "since": "P7",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "settings.appearance.icon",
+        "icons/settings.png",
+        "settings"
+      ]
+    },
+    {
+      "id": "app.<key>.icon",
+      "display_name": "App icon",
+      "category": "Apps",
+      "type": "icon",
+      "consumers": [
+        "Apps"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native app symbol",
+      "aliases": [],
+      "since": "P8",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "app.usbmode.icon",
+        "icons/usb.png",
+        "usb"
+      ]
+    },
+    {
+      "id": "cover.placeholder",
+      "display_name": "Missing cover image",
+      "category": "Game CoverFlow",
+      "type": "icon",
+      "consumers": [
+        "Game CoverFlow",
+        "Favorites",
+        "Recents",
+        "Game Details"
+      ],
+      "default_reference": "Built-in card silhouette",
+      "fallback": "Native card or platform art as appropriate",
+      "aliases": [],
+      "since": "P10",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "cover.placeholder",
+        "icons/cover.png",
+        "cover"
+      ]
+    },
+    {
+      "id": "achievement.badge",
+      "display_name": "Missing badge image",
+      "category": "Gallery",
+      "type": "icon",
+      "consumers": [
+        "Gallery"
+      ],
+      "default_reference": "Built-in trophy if no valid ra.trophy",
+      "fallback": "Native trophy",
+      "aliases": [],
+      "since": "P10",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "achievement.badge",
+        "icons/badge.png",
+        "trophy"
+      ]
+    },
+    {
+      "id": "ra.trophy",
+      "display_name": "Achievement trophy",
+      "category": "Home",
+      "type": "icon",
+      "consumers": [
+        "Home",
+        "Gallery",
+        "Game Details",
+        "Recents"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native trophy",
+      "aliases": [],
+      "since": "P5.2",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "ra.trophy",
+        "icons/trophy.png",
+        "trophy"
+      ]
+    },
+    {
+      "id": "navigation.move.sound",
+      "display_name": "Navigation move sound",
+      "category": "Enhanced navigation",
+      "type": "sound",
+      "consumers": [
+        "Enhanced navigation"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native waveform, silent if disabled",
+      "aliases": [
+        "navigation.sound"
+      ],
+      "since": "P4.2",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [
+        "ui_sounds"
+      ]
+    },
+    {
+      "id": "navigation.select.sound",
+      "display_name": "Navigation select sound",
+      "category": "Enhanced navigation",
+      "type": "sound",
+      "consumers": [
+        "Enhanced navigation"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native waveform, silent if disabled",
+      "aliases": [],
+      "since": "P4.2",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [
+        "ui_sounds"
+      ]
+    },
+    {
+      "id": "navigation.confirm.sound",
+      "display_name": "Navigation confirm sound",
+      "category": "Enhanced navigation",
+      "type": "sound",
+      "consumers": [
+        "Enhanced navigation"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native waveform, silent if disabled",
+      "aliases": [],
+      "since": "P4.2",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [
+        "ui_sounds"
+      ]
+    },
+    {
+      "id": "navigation.cancel.sound",
+      "display_name": "Navigation cancel sound",
+      "category": "Enhanced navigation",
+      "type": "sound",
+      "consumers": [
+        "Enhanced navigation"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native waveform, silent if disabled",
+      "aliases": [],
+      "since": "P4.2",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [
+        "ui_sounds"
+      ]
+    },
+    {
+      "id": "firmware.raw",
+      "display_name": "Unknown firmware RAW",
+      "category": "Firmware",
+      "type": "protected",
+      "consumers": [
+        "Firmware"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native asset lifecycle",
+      "aliases": [],
+      "since": "P3",
+      "editable": false,
+      "classification": "protected",
+      "optional": true,
+      "configuration_keys": []
+    },
+    {
+      "id": "library.game_cover",
+      "display_name": "Game-specific cover",
+      "category": "Library",
+      "type": "protected",
+      "consumers": [
+        "Library"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native asset lifecycle",
+      "aliases": [],
+      "since": "P3",
+      "editable": false,
+      "classification": "protected",
+      "optional": true,
+      "configuration_keys": []
+    },
+    {
+      "id": "runtime.screenshot",
+      "display_name": "Gameplay screenshot",
+      "category": "Runtime",
+      "type": "protected",
+      "consumers": [
+        "Runtime"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native asset lifecycle",
+      "aliases": [],
+      "since": "P3",
+      "editable": false,
+      "classification": "protected",
+      "optional": true,
+      "configuration_keys": []
+    },
+    {
+      "id": "ra.actual_badge",
+      "display_name": "Actual badge",
+      "category": "RetroAchievements",
+      "type": "protected",
+      "consumers": [
+        "RetroAchievements"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native asset lifecycle",
+      "aliases": [],
+      "since": "P3",
+      "editable": false,
+      "classification": "protected",
+      "optional": true,
+      "configuration_keys": []
+    },
+    {
+      "id": "ra.actual_avatar",
+      "display_name": "Linked user avatar",
+      "category": "RetroAchievements",
+      "type": "protected",
+      "consumers": [
+        "RetroAchievements"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native asset lifecycle",
+      "aliases": [],
+      "since": "P3",
+      "editable": false,
+      "classification": "protected",
+      "optional": true,
+      "configuration_keys": []
+    },
+    {
+      "id": "home.recents.icon",
+      "display_name": "Recents destination icon",
+      "category": "Home",
+      "type": "icon",
+      "consumers": [
+        "Home"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native destination glyph",
+      "aliases": [],
+      "since": "P10",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "home.recents.icon",
+        "icons/home-recents.png",
+        "recents"
+      ]
+    },
+    {
+      "id": "home.apps.icon",
+      "display_name": "Apps destination icon",
+      "category": "Home",
+      "type": "icon",
+      "consumers": [
+        "Home"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native destination glyph",
+      "aliases": [],
+      "since": "P10",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "home.apps.icon",
+        "icons/home-apps.png",
+        "apps"
+      ]
+    },
+    {
+      "id": "home.settings.icon",
+      "display_name": "Settings destination icon",
+      "category": "Home",
+      "type": "icon",
+      "consumers": [
+        "Home"
+      ],
+      "default_reference": "native FrogUI",
+      "fallback": "Native destination glyph",
+      "aliases": [],
+      "since": "P10",
+      "editable": true,
+      "classification": "themeable",
+      "optional": true,
+      "configuration_keys": [],
+      "reference": [
+        "home.settings.icon",
+        "icons/home-settings.png",
+        "settings"
+      ]
+    }
+  ],
+  "presentation": {
+    "transition_ms": {
+      "min": 0,
+      "max": 500,
+      "default": 180
+    },
+    "icon_scale_percent": {
+      "min": 100,
+      "max": 150,
+      "default": 115
+    },
+    "icon_spacing": {
+      "min": 0,
+      "max": 64,
+      "default": 8
+    },
+    "coverflow_neighbors": {
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    "coverflow_side_scale_percent": {
+      "min": 50,
+      "max": 100,
+      "default": 75
+    },
+    "coverflow_spacing": {
+      "min": 0,
+      "max": 64,
+      "default": 8
+    },
+    "background_crossfade": {
+      "values": [
+        "off",
+        "on"
+      ],
+      "default": "off"
+    },
+    "reduced_motion": {
+      "values": [
+        "off",
+        "on"
+      ],
+      "default": "off"
+    },
+    "navigation_sounds": {
+      "values": [
+        "off",
+        "on"
+      ],
+      "default": "off"
+    },
+    "recents_screenshot_dim": {
+      "min": 0,
+      "max": 255,
+      "default": 96,
+      "consumers": [
+        "Recents"
+      ]
+    },
+    "recents_shadow_opacity": {
+      "min": 0,
+      "max": 255,
+      "default": 166,
+      "consumers": [
+        "Recents"
+      ]
+    },
+    "coverflow_selection_opacity": {
+      "min": 0,
+      "max": 255,
+      "default": 142,
+      "consumers": [
+        "Game CoverFlow",
+        "Favorites"
+      ]
+    },
+    "home_selection_opacity": {
+      "min": 0,
+      "max": 255,
+      "default": 140,
+      "consumers": [
+        "Home"
+      ]
+    }
+  }
+}

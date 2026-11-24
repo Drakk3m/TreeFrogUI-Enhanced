@@ -2,7 +2,6 @@
 #define ENHANCED_RECENTS_H
 
 static Thumbnail enhanced_recents_screenshot;
-static Thumbnail enhanced_recents_platform_cover;
 static char enhanced_recents_game[MAX_PATH_LEN];
 static char enhanced_recents_platform[64];
 static unsigned enhanced_recents_generation;
@@ -13,32 +12,35 @@ static void prepare_enhanced_recents(void) {
         !game || !p9_rom_available) {
         free(enhanced_recents_screenshot.data);
         enhanced_recents_screenshot = (Thumbnail){0};
-        enhanced_recents_platform_cover = (Thumbnail){0};
+        recents_platform_icon = NULL;
+        recents_platform_icon_probed = false;
         enhanced_recents_game[0] = 0;
         enhanced_recents_platform[0] = 0;
         return;
     }
-    if (!strcmp(enhanced_recents_game, game) &&
-        enhanced_recents_generation == filelist_scan_generation) return;
-
-    free(enhanced_recents_screenshot.data);
-    enhanced_recents_screenshot = (Thumbnail){0};
-    enhanced_recents_platform_cover = (Thumbnail){0};
-    enhanced_recents_generation = filelist_scan_generation;
-    snprintf(enhanced_recents_game, sizeof enhanced_recents_game, "%s", game);
-    load_bounded_screenshot_thumbnail(game, &enhanced_recents_screenshot);
+    bool new_game = strcmp(enhanced_recents_game, game) != 0 ||
+                    enhanced_recents_generation != filelist_scan_generation;
+    if (new_game) {
+        free(enhanced_recents_screenshot.data);
+        enhanced_recents_screenshot = (Thumbnail){0};
+        recents_platform_icon = NULL;
+        recents_platform_icon_probed = false;
+        enhanced_recents_generation = filelist_scan_generation;
+        snprintf(enhanced_recents_game, sizeof enhanced_recents_game, "%s", game);
+        load_bounded_screenshot_thumbnail(game, &enhanced_recents_screenshot);
+    }
+    if (recents_platform_icon_probed) return;
+    recents_platform_icon_probed = true;
     if (collection_platform(enhanced_recents_platform, sizeof enhanced_recents_platform, game)) {
         ThemeResourceDescriptor resource;
         if (enhanced_platform_resource(enhanced_recents_platform, "icon", &resource)) {
-            SystemIcon *icon = system_icon_load(resource.path, &resource);
-            if (icon) enhanced_recents_platform_cover = (Thumbnail){
-                .data = icon->pixels, .alpha = icon->alpha, .width = icon->width, .height = icon->height
-            };
+            recents_platform_icon = system_icon_load(resource.path, &resource);
         }
     }
 }
 
 static void render_recent_box(uint16_t *fb, const Thumbnail *cover) {
+    const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
     int width = SCREEN_WIDTH * 31 / 100, height = SCREEN_HEIGHT * 53 / 100;
     if (cover && cover->width > 0 && cover->height > 0) {
         if (width * cover->height > height * cover->width)
@@ -53,7 +55,8 @@ static void render_recent_box(uint16_t *fb, const Thumbnail *cover) {
     int y = SCREEN_HEIGHT * 45 / 100 - height / 2;
     int spine = UI_S(15), skew = UI_S(7);
     render_rounded_rect_alpha(fb, x - spine + UI_S(5), y + UI_S(8),
-                              width + spine + skew, height + UI_S(2), UI_S(8), 0, 166);
+                              width + spine + skew, height + UI_S(2), UI_S(8), 0,
+                              theme ? theme->recents_shadow_opacity : 166);
     for (int dy = 0; dy < height; dy++) {
         int shift = skew * dy / height;
         render_fill_rect(fb, x + shift - spine, y + dy, spine, 1, COLOR_HEADER);
@@ -68,9 +71,11 @@ static void render_recent_box(uint16_t *fb, const Thumbnail *cover) {
 
 static void render_enhanced_recents(uint16_t *fb) {
     if (enhanced_recents_screenshot.data) {
+        const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
         render_clear_screen(fb);
         render_thumbnail_contained(fb, &enhanced_recents_screenshot, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        render_rounded_rect_alpha(fb, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 96);
+        render_rounded_rect_alpha(fb, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0,
+                                  theme ? theme->recents_screenshot_dim : 96);
     }
     render_header(fb, tr("tab.recents"));
     const char *hint = tr_or("enhanced.recents.back", "B Back");
@@ -84,7 +89,13 @@ static void render_enhanced_recents(uint16_t *fb) {
             render_details_chevron(fb, SCREEN_WIDTH - UI_S(14), 1);
         const Thumbnail *cover = selected_index >= coverflow_first && selected_index < coverflow_last
                                ? coverflow_images[selected_index - coverflow_first] : NULL;
-        if (!cover && enhanced_recents_platform_cover.data) cover = &enhanced_recents_platform_cover;
+        const SystemIcon *icon = recents_platform_icon ? recents_platform_icon : cover_placeholder_icon;
+        Thumbnail fallback;
+        if (!cover && icon) {
+            fallback = (Thumbnail){.data=icon->pixels, .alpha=icon->alpha,
+                                   .width=icon->width, .height=icon->height};
+            cover = &fallback;
+        }
         render_recent_box(fb, cover);
         int x = SCREEN_WIDTH * 44 / 100, w = SCREEN_WIDTH - x - UI_S(29);
         int y = HEADER_HEIGHT + UI_S(26), step = font_get_size() + UI_S(6);
