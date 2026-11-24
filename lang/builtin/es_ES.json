@@ -1,4 +1,6 @@
 {
+  "enhanced.apps.empty": "No hay aplicaciones disponibles",
+  "enhanced.apps.controls": "A Abrir    B Atrás",
   "enhanced.settings.range_controls": "Izq/Der Ajustar   B Atrás",
   "enhanced.settings.status_controls": "Arriba/Abajo Navegar   B Atrás",
   "enhanced.settings.rtc_fields": "Izq/Der Campo   Arriba/Abajo Ajustar",

@@ -1,4 +1,6 @@
 {
+  "enhanced.apps.empty": "No applications available",
+  "enhanced.apps.controls": "A Open    B Back",
   "enhanced.settings.range_controls": "Left/Right Adjust   B Back",
   "enhanced.settings.status_controls": "Up/Down Navigate   B Back",
   "enhanced.settings.rtc_fields": "Left/Right Field   Up/Down Adjust",

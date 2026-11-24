@@ -3706,6 +3706,7 @@ static int activity_marquee_active(void) {
 static int games_tab_selected = 0, games_tab_scroll = 0;
 static int recents_tab_selected = 0;
 static int apps_tab_selected = 0;
+static unsigned apps_scan_generation;
 static DirEntry *games_tab_entries = NULL;
 static int games_tab_entry_count = 0;
 
@@ -3749,6 +3750,7 @@ static int is_app_folder_name(const char *name) {
 }
 
 static void scan_apps_tab(void) {
+    apps_scan_generation++;
     strncpy(current_path, ROMS_PATH, MAX_PATH_LEN - 1);
     current_path[MAX_PATH_LEN - 1] = '\0';
     apps_root_path[0] = '\0';
@@ -5025,6 +5027,11 @@ static bool enhanced_library_view(void) {
            !viewing_recents && !viewing_favourites && !viewing_apps &&
            !apps_browsing && !viewing_search && !viewing_activity && !viewing_info &&
            enhanced_library_relative_path() != NULL;
+}
+
+static bool enhanced_apps_view(void) {
+    return settings_graphical_home && viewing_apps && !settings_menu_active &&
+           !apps_browsing && !viewing_info;
 }
 
 static bool enhanced_details_view(void) {
@@ -6518,23 +6525,77 @@ static int coverflow_neighbors(void) {
     return theme ? (int)theme->coverflow_neighbors : 2;
 }
 
+static bool coverflow_apps;
+static unsigned coverflow_apps_generation;
+static Thumbnail coverflow_app_art[BOXART_FLOW_SLOTS];
+typedef struct {
+    char text[96];
+    int width;
+} AppCardCaption;
+static AppCardCaption coverflow_app_captions[BOXART_FLOW_SLOTS][3];
+
+static int coverflow_spacing(const ThemePresentation *theme);
+
+static int coverflow_card_width(const ThemePresentation *theme, int width, bool selected,
+                                bool distant) {
+    if (selected) return width;
+    int scale = theme ? (int)theme->coverflow_side_scale_percent : 66;
+    if (distant) scale = scale * 3 / 4;
+    int margin = 2 * (coverflow_spacing(theme) - width / 2 - UI_S(12));
+    int scaled = width * scale / 100;
+    return scaled < margin ? scaled : margin;
+}
+
+static void prepare_app_captions(const char *key, AppCardCaption captions[3]) {
+    const char *name = app_label(key);
+    const ThemePresentation *theme = theme_resource_presentation(enhanced_theme);
+    int central_width = SCREEN_WIDTH * 24 / 100;
+    for (int i = 0; i < 3; i++) {
+        int available = coverflow_card_width(theme, central_width, i == 0, i == 2) - UI_S(12);
+        font_set_render_scale(i == 0 ? 85 : 70);
+        fit_enhanced_title(captions[i].text, sizeof captions[i].text, name, available);
+        captions[i].width = font_measure_text(captions[i].text);
+    }
+    font_set_render_scale(100);
+}
+
+static const Thumbnail *prepare_app_cover(const char *key, Thumbnail *cover) {
+    ThemeResourceDescriptor resource;
+    char id[THEME_RESOURCE_ID_MAX];
+    int n = snprintf(id, sizeof id, "app.%s.icon", key);
+    if (n < 0 || (size_t)n >= sizeof id ||
+        !theme_resource_resolve(enhanced_theme, id, &resource)) return NULL;
+    SystemIcon *icon = system_icon_load(resource.path, &resource);
+    if (!icon) return NULL;
+    *cover = (Thumbnail){
+        .data = icon->pixels, .alpha = icon->alpha,
+        .width = icon->width, .height = icon->height
+    };
+    return cover;
+}
+
 static bool coverflow_animating(void) {
-    return enhanced_library_view() && !enhanced_details_view() && !enhanced_achievements_view() &&
+    return (enhanced_apps_view() ||
+           (enhanced_library_view() && !enhanced_details_view() && !enhanced_achievements_view())) &&
            coverflow_frame < SYSTEM_CAROUSEL_FRAMES;
 }
 
-/* Resolve the visible span on selection or listing changes. Cached pointers
- * remain valid while the span is painted. It never exceeds the LRU capacity. */
+/* Prepare a bounded card window for the active collection before drawing. */
 static void prepare_enhanced_library(bool theme_changed) {
-    bool active = enhanced_library_view();
-    bool new_directory = active && strcmp(coverflow_directory, current_path) != 0;
-    if (theme_changed || new_directory || ((!active || entry_count <= 0) && coverflow_directory[0])) {
+    bool apps = enhanced_apps_view();
+    bool active = apps || enhanced_library_view();
+    bool new_collection = active && (apps != coverflow_apps ||
+        strcmp(coverflow_directory, current_path) != 0 ||
+        (apps && coverflow_apps_generation != apps_scan_generation));
+    if (theme_changed || new_collection || ((!active || entry_count <= 0) && coverflow_directory[0])) {
         if (boxart_bounded) boxart_clear();
         coverflow_directory[0] = 0;
         coverflow_target = -1;
         coverflow_frame = SYSTEM_CAROUSEL_FRAMES;
         coverflow_first = coverflow_last = 0;
     }
+    coverflow_apps = apps;
+    coverflow_apps_generation = apps_scan_generation;
     if (!active || entry_count <= 0) return;
     snprintf(coverflow_directory, sizeof coverflow_directory, "%s", current_path);
     if (selected_index < 0) selected_index = 0;
@@ -6542,9 +6603,15 @@ static void prepare_enhanced_library(bool theme_changed) {
 
     bool motion = enhanced_home_motion_enabled() && !enhanced_details_view() && !enhanced_achievements_view();
     bool moving = coverflow_target >= 0 && coverflow_target != selected_index && motion;
-    if (coverflow_target != selected_index || coverflow_title_generation != filelist_scan_generation) {
-        prepare_coverflow_title(&entries[selected_index]);
-        coverflow_title_generation = filelist_scan_generation;
+    if (coverflow_target != selected_index || (!apps && coverflow_title_generation != filelist_scan_generation)) {
+        if (apps) {
+            fit_enhanced_title(coverflow_title_text, sizeof coverflow_title_text,
+                               app_label(entries[selected_index].name), SCREEN_WIDTH - UI_S(40));
+            coverflow_title_width = font_measure_text(coverflow_title_text);
+        } else {
+            prepare_coverflow_title(&entries[selected_index]);
+            coverflow_title_generation = filelist_scan_generation;
+        }
     }
     if (coverflow_target != selected_index) {
         float start = moving ? coverflow_visible : (float)selected_index;
@@ -6559,21 +6626,25 @@ static void prepare_enhanced_library(bool theme_changed) {
     }
 
     int neighbors = coverflow_neighbors();
-    /* Keep the union until the next selection. Settling the animation should
-     * not schedule additional probes or shift cache ownership. */
     int first = (int)floorf(coverflow_from) - neighbors;
     int last = (int)ceilf(coverflow_from) + neighbors + 1;
     if (first > selected_index - neighbors) first = selected_index - neighbors;
     if (last < selected_index + neighbors + 1) last = selected_index + neighbors + 1;
     if (first < 0) first = 0;
     if (last > entry_count) last = entry_count;
-    if (first == coverflow_first && last == coverflow_last && !new_directory && !theme_changed)
+    if (first == coverflow_first && last == coverflow_last && !new_collection && !theme_changed)
         return;
     for (int i = first; i < last; i++) {
-        char path[1024];
-        int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[i].name);
-        coverflow_images[i - first] = !entries[i].is_dir && n > 0 && (size_t)n < sizeof path
-                                     ? boxart_get(path, true) : NULL;
+        if (apps) {
+            prepare_app_captions(entries[i].name, coverflow_app_captions[i - first]);
+            coverflow_images[i - first] =
+                prepare_app_cover(entries[i].name, &coverflow_app_art[i - first]);
+        } else {
+            char path[1024];
+            int n = snprintf(path, sizeof path, "%s/%s", current_path, entries[i].name);
+            coverflow_images[i - first] = !entries[i].is_dir && n > 0 && (size_t)n < sizeof path
+                                         ? boxart_get(path, true) : NULL;
+        }
     }
     coverflow_first = first;
     coverflow_last = last;
@@ -6596,6 +6667,25 @@ static int coverflow_spacing(const ThemePresentation *theme) {
     return spacing;
 }
 
+static void render_app_cover_fallback(uint16_t *fb, const char *key, int x, int y,
+                                      int size, uint16_t color) {
+    if (strcmp(key, "usbmode") != 0 || size < 14) {
+        enhanced_home_utility_icon(fb, ENHANCED_HOME_APPS, x, y, size, color);
+        return;
+    }
+
+    int u = size / 14;
+    render_fill_rect(fb, x - u / 2, y - 5 * u, u, 10 * u, color);
+    render_fill_rect(fb, x - 4 * u, y - u, 8 * u, u, color);
+    render_fill_rect(fb, x - 4 * u, y - 3 * u, u, 3 * u, color);
+    render_fill_rect(fb, x + 3 * u, y - 3 * u, u, 3 * u, color);
+    render_rounded_rect(fb, x - 5 * u, y - 4 * u, 3 * u, 3 * u, u, color);
+    render_fill_rect(fb, x + 2 * u, y - 4 * u, 3 * u, 3 * u, color);
+    render_rounded_rect(fb, x - u * 2, y + 3 * u, u * 4, u * 4, u * 2, color);
+    for (int step = 0; step < 3 * u; step++)
+        render_fill_rect(fb, x - step, y - 6 * u + step, 2 * step + 1, 1, color);
+}
+
 static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     if (index < coverflow_first || index >= coverflow_last) return;
     float distance = (float)index - visual;
@@ -6607,13 +6697,9 @@ static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     int center = SCREEN_WIDTH / 2 + (int)(distance * spacing);
     int width = SCREEN_WIDTH * 24 / 100;
     int height = SCREEN_HEIGHT * 47 / 100;
+    int scaled_width = coverflow_card_width(theme, width, selected, depth > 1.1f);
+    if (scaled_width <= 0) return;
     if (!selected) {
-        int scale = theme ? (int)theme->coverflow_side_scale_percent : 66;
-        if (depth > 1.1f) scale = scale * 3 / 4;
-        int margin = 2 * (spacing - width / 2 - UI_S(12));
-        int scaled_width = width * scale / 100;
-        if (scaled_width > margin) scaled_width = margin;
-        if (scaled_width <= 0) return;
         height = height * scaled_width / width;
         width = scaled_width;
     }
@@ -6628,6 +6714,38 @@ static void render_coverflow_item(uint16_t *fb, int index, float visual) {
     int y = SCREEN_HEIGHT * 44 / 100 - height / 2 + (selected ? 0 : (int)(depth * UI_S(7)));
     int x = center - width / 2;
     const Thumbnail *cover = coverflow_images[index - coverflow_first];
+    if (coverflow_apps) {
+        render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4), width + UI_S(8),
+                                  height + UI_S(8), UI_S(9), COLOR_SELECT_BG,
+                                  selected ? 230 : 66);
+        render_rounded_rect(fb, x - UI_S(2), y - UI_S(2), width + UI_S(4),
+                            height + UI_S(4), UI_S(8), COLOR_LEGEND_BG);
+        if (selected)
+            render_rounded_rect_alpha(fb, x - UI_S(2), y - UI_S(2), width + UI_S(4),
+                                      height + UI_S(4), UI_S(8), COLOR_SELECT_BG, 42);
+        int inset = width / 5;
+        int art_height = height * 64 / 100;
+        uint16_t color = COLOR_LEGEND;
+        if (cover)
+            render_thumbnail_contained(fb, cover, x + inset, y + UI_S(8),
+                                       width - 2 * inset, art_height);
+        else
+            render_app_cover_fallback(fb, entries[index].name, center,
+                                      y + art_height / 2 + UI_S(8), width - 2 * inset, color);
+        int caption_width = width - UI_S(12);
+        if (caption_width > 0) {
+            int kind = selected ? 0 : depth > 1.1f ? 2 : 1;
+            const AppCardCaption *caption = &coverflow_app_captions[index - coverflow_first][kind];
+            int label_width = caption->width < caption_width ? caption->width : caption_width;
+            int label_x = center - label_width / 2;
+            int label_y = y + height * 76 / 100;
+            font_set_render_scale(selected ? 85 : 70);
+            font_draw_text_clipped(fb, SCREEN_WIDTH, SCREEN_HEIGHT, label_x, label_y,
+                                   caption->text, color, label_x, label_y, label_width, ITEM_HEIGHT);
+            font_set_render_scale(100);
+        }
+        return;
+    }
     render_rounded_rect_alpha(fb, x - UI_S(4), y - UI_S(4),
                               width + UI_S(8), height + UI_S(8), UI_S(8),
                               selected ? COLOR_SELECT_BG : COLOR_BG, selected ? 142 : 120);
@@ -6647,15 +6765,7 @@ static void render_coverflow_item(uint16_t *fb, int index, float visual) {
 static float details_cover_start_offset;
 static int details_cover_transition_frame = SYSTEM_CAROUSEL_FRAMES;
 
-static void render_enhanced_library(uint16_t *fb) {
-    render_header(fb, system_display_name(get_basename(current_path)));
-    if (entry_count <= 0) {
-        const char *message = tr_or("enhanced.library.empty", "No games in this collection");
-        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, (SCREEN_WIDTH - font_measure_text(message)) / 2,
-                       SCREEN_HEIGHT / 2, message, COLOR_TEXT);
-        render_legend(fb, LEGEND_X_NONE, 0, 0);
-        return;
-    }
+static void render_coverflow_cards(uint16_t *fb) {
     float progress = 1.0f;
     if (coverflow_frame < SYSTEM_CAROUSEL_FRAMES) {
         coverflow_frame++;
@@ -6670,8 +6780,42 @@ static void render_enhanced_library(uint16_t *fb) {
         if (at != selected_index) render_coverflow_item(fb, at, coverflow_visible);
     }
     render_coverflow_item(fb, selected_index, coverflow_visible);
+}
+
+static void render_enhanced_library(uint16_t *fb) {
+    render_header(fb, system_display_name(get_basename(current_path)));
+    if (entry_count <= 0) {
+        const char *message = tr_or("enhanced.library.empty", "No games in this collection");
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, (SCREEN_WIDTH - font_measure_text(message)) / 2,
+                       SCREEN_HEIGHT / 2, message, COLOR_TEXT);
+        render_legend(fb, LEGEND_X_NONE, 0, 0);
+        return;
+    }
+    render_coverflow_cards(fb);
     coverflow_title(fb, SCREEN_HEIGHT * 76 / 100);
     render_legend(fb, LEGEND_X_NONE, 1, 1);
+}
+
+static void render_enhanced_apps(uint16_t *fb) {
+    render_header(fb, tr("tab.apps"));
+    if (entry_count > 0) {
+        render_coverflow_cards(fb);
+        coverflow_title(fb, SCREEN_HEIGHT * 76 / 100);
+        char position[32];
+        snprintf(position, sizeof position, "%d / %d", selected_index + 1, entry_count);
+        int x = SCREEN_WIDTH - UI_S(22) - font_measure_text(position);
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, x,
+                       SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5), position, COLOR_LEGEND);
+    } else {
+        const char *message = tr_or("enhanced.apps.empty", "No applications available");
+        font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, (SCREEN_WIDTH - font_measure_text(message)) / 2,
+                       SCREEN_HEIGHT / 2, message, COLOR_TEXT);
+    }
+    const char *hint = entry_count > 0
+        ? tr_or("enhanced.apps.controls", "A Open    B Back")
+        : tr_or("enhanced.details.achievement_back", "B Back");
+    font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, UI_S(22),
+                   SCREEN_HEIGHT - ITEM_HEIGHT - UI_S(5), hint, COLOR_LEGEND);
 }
 
 static int details_playable_neighbor(int index, int direction) {
@@ -7681,6 +7825,7 @@ static void handle_input(void) {
             if (selected_index < rc)
                 launch_by_path(rg[selected_index].full_path);
         } else if (viewing_apps) {
+            if (enhanced_apps_view()) apps_tab_selected = selected_index;
             /* Apps entries are virtual aliases for the on-card media folders. */
             char app_path[MAX_PATH_LEN];
             int app_index = -1;
@@ -7859,7 +8004,7 @@ static void handle_input(void) {
             if (next >= entry_count) next = entry_count - 1;
             selected_index = next;
         }
-    } else if (enhanced_library_view()) {
+    } else if (enhanced_library_view() || enhanced_apps_view()) {
         if (input_repeat(FROG_BTN_LEFT) && selected_index > 0) selected_index--;
         if (input_repeat(FROG_BTN_RIGHT) && selected_index + 1 < entry_count) selected_index++;
     } else if (browser_grid_view()) {
@@ -9138,6 +9283,8 @@ void retro_run(void) {
             if (enhanced_achievements_view()) sig = sig*33u + (unsigned)details_achievement_index;
             if (enhanced_library_view())
                 sig = sig*33u + filelist_scan_generation;
+            if (enhanced_apps_view())
+                sig = sig*33u + apps_scan_generation;
             sig = sig*33u + (unsigned)game_switcher_fullscreen;
             for (const char *p = current_path; *p; p++) sig = sig*33u + (unsigned char)*p;
         }
@@ -9207,6 +9354,8 @@ void retro_run(void) {
                 render_enhanced_home(framebuffer);
             else
                 render_system_grid(framebuffer);
+        } else if (enhanced_apps_view()) {
+            render_enhanced_apps(framebuffer);
         } else if (enhanced_achievements_view()) {
             render_enhanced_achievements(framebuffer);
         } else if (enhanced_details_view()) {

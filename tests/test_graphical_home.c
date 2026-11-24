@@ -90,8 +90,12 @@ int __wrap_system(const char *command) {
     return 0;
 }
 
+static bool test_app_executables;
 int __real_access(const char *path, int mode);
 int __wrap_access(const char *path, int mode) {
+    if (test_app_executables && (mode & X_OK) &&
+        (!strcmp(path, USB_MODE_BIN) || !strcmp(path, REBOOT_BIN) || !strcmp(path, SHUTDOWN_BIN)))
+        return 0;
     if (test_legacy_icon[0] && strcmp(path, legacy_icon) == 0)
         return __real_access(test_legacy_icon, mode);
     if (strncmp(path, "/mnt/sdcard/", 12) == 0)
@@ -1276,6 +1280,136 @@ static void ra_game_fixture(const char *root, bool create) {
         "{\"id\":2,\"title\":\"Second step\",\"description\":\"Explore the cave\",\"points\":10}]}");
 }
 
+static void test_apps_coverflow(const char *root) {
+    char path[1024], assets[1024];
+    assert(snprintf(path, sizeof path, "%s/Ebook", root) < (int)sizeof path);
+    assert(mkdir(path, 0700) == 0);
+    assert(snprintf(assets, sizeof assets, "%s/.app-icons", root) < (int)sizeof assets);
+    assert(mkdir(assets, 0700) == 0);
+    assert(snprintf(path, sizeof path, "%s/theme.ini", assets) < (int)sizeof path);
+    write_fixture(path, "[theme]\nmanifest_version=1\n"
+                        "[resource.app.usbmode.icon]\npath=valid.png\n"
+                        "[resource.app.ebook.icon]\npath=corrupt.png\n");
+    assert(snprintf(path, sizeof path, "%s/valid.png", assets) < (int)sizeof path);
+    write_bytes(path, icon_png, sizeof icon_png);
+    assert(snprintf(path, sizeof path, "%s/corrupt.png", assets) < (int)sizeof path);
+    write_bytes(path, corrupt_png, sizeof corrupt_png);
+    assert(!enhanced_theme);
+    enhanced_theme = theme_resource_create(assets, THEME_RESOURCE_CACHE_MAX);
+    assert(enhanced_theme && theme_resource_load_manifest(enhanced_theme, "theme.ini"));
+    assert(!framebuffer);
+    framebuffer = calloc(640 * 480, sizeof *framebuffer);
+    assert(framebuffer);
+
+    test_app_executables = true;
+    assert(setenv("TF_DEVICE", "R36SX", 1) == 0);
+    settings_graphical_home = 1;
+    settings_apps_in_settings = 0;
+    viewing_recents = viewing_apps = viewing_favourites = viewing_search = false;
+    strcpy(current_path, ROMS_PATH);
+    scan_directory(current_path);
+    enhanced_home_kind = ENHANCED_HOME_APPS;
+    press(FROG_BTN_A);
+    assert(enhanced_apps_view() && entry_count >= 4);
+
+    int usb = visible_entry_named("usbmode"), ebook = visible_entry_named("ebook");
+    assert(usb >= 0 && ebook >= 0);
+    selected_index = usb;
+    prepare_enhanced_library(true);
+    assert(coverflow_apps && coverflow_images[usb - coverflow_first]);
+    assert(!coverflow_images[ebook - coverflow_first]);
+    render_enhanced_apps(framebuffer);
+    press(FROG_BTN_A);
+    assert(usb_mode_confirm_active && !usb_mode_initiated_active);
+    press(FROG_BTN_B);
+    assert(!usb_mode_confirm_active && enhanced_apps_view() && selected_index == usb);
+
+    selected_index = 0;
+    press(FROG_BTN_LEFT);
+    assert(selected_index == 0);
+    int motion_before = settings_anim;
+    settings_anim = true;
+    prepare_enhanced_library(false);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    assert(selected_index == 1 && coverflow_animating());
+    settings_anim = false;
+    prepare_enhanced_library(false);
+    assert(!coverflow_animating());
+    settings_anim = motion_before;
+    selected_index = entry_count - 1;
+    press(FROG_BTN_RIGHT);
+    assert(selected_index == entry_count - 1);
+
+    selected_index = ebook;
+    press(FROG_BTN_A);
+    assert(apps_browsing && !enhanced_apps_view());
+    press(FROG_BTN_B);
+    assert(enhanced_apps_view() && selected_index == ebook);
+
+    const char *keys[] = {"reboot", "shutdown"};
+    const char *bin[] = {REBOOT_BIN, SHUTDOWN_BIN};
+    for (int i = 0; i < 2; i++) {
+        selected_index = visible_entry_named(keys[i]);
+        assert(selected_index >= 0);
+        press(FROG_BTN_A);
+        /* The wrapped launcher writes only to the fixture. There is no runtime callback. */
+        FILE *file = fopen(LAUNCH_FILE, "r");
+        char line[512];
+        assert(file && fgets(line, sizeof line, file) && !strcmp(line, "standalone\n"));
+        assert(fgets(line, sizeof line, file));
+        line[strcspn(line, "\n")] = 0;
+        assert(!strcmp(line, bin[i]));
+        fclose(file);
+    }
+
+    assert(setenv("TF_DEVICE", "SF3000", 1) == 0);
+    scan_apps_tab();
+    assert(visible_entry_named("shutdown") < 0);
+    assert(unsetenv("TF_DEVICE") == 0);
+    int count = entry_count;
+    for (int small = 0; small <= 1; small++) {
+        entry_count = small;
+        selected_index = 0;
+        prepare_enhanced_library(true);
+        render_enhanced_apps(framebuffer);
+        press(FROG_BTN_LEFT);
+        press(FROG_BTN_RIGHT);
+        assert(selected_index == 0);
+    }
+    entry_count = count;
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_APPS);
+
+    settings_apps_in_settings = 1;
+    open_enhanced_settings();
+    select_enhanced_setting(SR_OPEN_APPS);
+    press(FROG_BTN_A);
+    assert(enhanced_apps_view() && settings_apps_origin);
+    press(FROG_BTN_B);
+    assert(enhanced_settings_active() &&
+           enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_OPEN_APPS);
+    press(FROG_BTN_B);
+    press(FROG_BTN_B);
+    assert(!settings_menu_active);
+    settings_apps_in_settings = 0;
+
+    settings_graphical_home = 0;
+    scan_apps_tab();
+    assert(viewing_apps && !enhanced_apps_view());
+    switch_main_tab(MAIN_TAB_GAMES);
+    settings_graphical_home = 1;
+    test_app_executables = false;
+    theme_resource_destroy(enhanced_theme);
+    enhanced_theme = NULL;
+    system_icons_clear();
+    free(framebuffer);
+    framebuffer = NULL;
+    assert(snprintf(path, sizeof path, "%s/Ebook", root) < (int)sizeof path);
+    assert(rmdir(path) == 0);
+    puts("PASS Apps shared CoverFlow, artwork, device restrictions, dispatch, submenus and return");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     assert(setenv("FROGUI_ROMS_PATH", argv[1], 1) == 0);
@@ -1537,6 +1671,7 @@ int main(int argc, char **argv) {
     test_ui_sounds(argv[1]);
     test_ribbon(argv[1]);
     test_coverflow(argv[1]);
+    test_apps_coverflow(argv[1]);
     test_home_ribbon_presentation();
     test_platform_filelists(argv[1]);
     test_ra_home(argv[1]);

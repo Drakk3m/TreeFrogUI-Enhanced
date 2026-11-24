@@ -153,6 +153,7 @@ static ThemeResourceKind resource_kind(const char *id) {
     if (strcmp(id, "home.background") == 0 || scoped_id(id, "platform.", ".background"))
         return THEME_RESOURCE_BACKGROUND;
     if (scoped_id(id, "platform.", ".icon")) return THEME_RESOURCE_PLATFORM_ICON;
+    if (scoped_id(id, "app.", ".icon")) return THEME_RESOURCE_APP_ICON;
     if (scoped_id(id, "settings.", ".icon")) return THEME_RESOURCE_SETTINGS_ICON;
     if (strcmp(id, "cover.placeholder") == 0) return THEME_RESOURCE_COVER_PLACEHOLDER;
     if (strcmp(id, "achievement.badge") == 0 || strcmp(id, "ra.trophy") == 0)
