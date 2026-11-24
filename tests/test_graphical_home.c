@@ -7,6 +7,8 @@ static char test_theme_pack_root[512];
 static char test_settings[MAX_PATH_LEN];
 static char test_cache[MAX_PATH_LEN];
 static char test_launch[MAX_PATH_LEN];
+static char test_sessions[MAX_PATH_LEN];
+static char test_playtime[MAX_PATH_LEN];
 
 static const char *cache_fixture_path(const char *path, char *mapped, size_t size) {
     size_t prefix = strlen(CACHE_DIR);
@@ -68,6 +70,10 @@ FILE *__real_fopen(const char *path, const char *mode);
 FILE *__wrap_fopen(const char *path, const char *mode) {
     char mapped[MAX_PATH_LEN];
     path = cache_fixture_path(path, mapped, sizeof mapped);
+    if (test_sessions[0] && strcmp(path, PLAY_SESSIONS_PATH) == 0)
+        return __real_fopen(test_sessions, mode);
+    if (test_playtime[0] && strcmp(path, "/mnt/sdcard/frogui/playtime.txt") == 0)
+        return __real_fopen(test_playtime, mode);
     if (strcmp(path, LAUNCH_FILE) == 0) return __real_fopen(test_launch, mode);
     if (strcmp(path, SETTINGS_FILE) == 0)
         return __real_fopen(test_settings, mode);
@@ -84,8 +90,12 @@ int __wrap_system(const char *command) {
     return 0;
 }
 
+static bool test_app_executables;
 int __real_access(const char *path, int mode);
 int __wrap_access(const char *path, int mode) {
+    if (test_app_executables && (mode & X_OK) &&
+        (!strcmp(path, USB_MODE_BIN) || !strcmp(path, REBOOT_BIN) || !strcmp(path, SHUTDOWN_BIN)))
+        return 0;
     if (test_legacy_icon[0] && strcmp(path, legacy_icon) == 0)
         return __real_access(test_legacy_icon, mode);
     if (strncmp(path, "/mnt/sdcard/", 12) == 0)
@@ -93,12 +103,22 @@ int __wrap_access(const char *path, int mode) {
     return __real_access(path, mode);
 }
 
+static long input_fixture_ms = 1000;
+
+int __wrap_gettimeofday(struct timeval *time, void *zone) {
+    (void)zone;
+    time->tv_sec = input_fixture_ms / 1000;
+    time->tv_usec = (input_fixture_ms % 1000) * 1000;
+    return 0;
+}
+
 static void press(FrogButton button) {
+    input_fixture_ms += 100;
     input_set_ext_raw(1u << input_get_raw_bit(button));
     handle_input();
     /* Face buttons require a stable hold in the real input layer. */
     if (button == FROG_BTN_A || button == FROG_BTN_B) {
-        usleep(80000);
+        input_fixture_ms += 80;
         handle_input();
     }
     input_set_ext_raw(0);
@@ -173,6 +193,245 @@ static void write_cover_bmp(const char *path, unsigned width, unsigned height) {
     memset(row, 0x90, row_size);
     for (unsigned y = 0; y < height; y++) assert(fwrite(row, 1, row_size, file) == row_size);
     assert(fclose(file) == 0);
+}
+
+static void test_settings_mapping_contract(void) {
+    /* The settings table deliberately has 48 rows: six section headers and
+     * exactly 42 mapped controls. This catches accidental loss or reordering
+     * when a control is added to the Enhanced settings projection. */
+    static const char *const expected[] = {
+        "settings.appearance", "UI theme", "settings.background_theme_pack", "Settings style",
+        "Enhanced graphical platform home", "Decorative pills", "settings.icon_pack",
+        "settings.center_text", "settings.friendly_system_names", "settings.font", "settings.font_size",
+        "settings.battery_colour_mode", "settings.stock_battery_indicator", "settings.background_images",
+        "settings.background_dim", "settings.wallpaper", "settings.background_image_fit", "settings.general",
+        "settings.language", "settings.brightness", "settings.animations", "settings.menu_sounds",
+        "settings.ui_sounds", "settings.hide_extensions", "settings.hide_empty_folders", "settings.library",
+        "Apps in Settings", "Open Apps", "settings.rom_source", "settings.otg_storage", "settings.game_switcher",
+        "Rounded recents screenshots", "settings.start_in_recents", "settings.gameplay", "settings.quick_resume",
+        "settings.autosave_autoload", "settings.custom_aspect_ratios", "settings.rtc_emulation", "settings.rtc_time",
+        "settings.rtc_sync_usb", "settings.rtc_bump", "settings.system", "settings.volume", "settings.file_cache",
+        "settings.rebuild_file_cache", "settings.disable_sleep", "settings.button_mapping", "settings.version"
+    };
+    assert(SETTINGS_ROW_N == (int)(sizeof expected / sizeof expected[0]));
+    for (int section = 0; section < SETTINGS_SECTION_N; section++)
+        settings_section_open[section] = true;
+    settings_layout = SETTINGS_LAYOUT_SECTIONS;
+    settings_build_vis_rows();
+    int mapped = 0;
+    for (int i = 0; i < SETTINGS_ROW_N; i++) {
+        assert(settings_rows[i].label && strcmp(settings_rows[i].label, expected[i]) == 0);
+        if (settings_rows[i].type != RT_HEADER) {
+            mapped++;
+            assert(settings_rows[i].label[0]);
+            assert(settings_row_visible(i));
+        }
+    }
+    assert(mapped == 42);
+
+    /* Dependent controls remain represented but become unavailable. */
+    settings_render_scheme_idx = 0;
+    settings_backgrounds = 0;
+    assert(!settings_row_enabled(&settings_rows[2]));
+    settings_backgrounds = 1;
+    assert(settings_row_enabled(&settings_rows[2]));
+    settings_render_scheme_idx = 1;
+    assert(!settings_row_enabled(&settings_rows[2]));
+    settings_render_scheme_idx = 0;
+    settings_style = STYLE_SYSTEM;
+    assert(settings_row_enabled(&settings_rows[6]));
+    settings_style = STYLE_VERTICAL;
+    assert(!settings_row_enabled(&settings_rows[6]));
+    settings_style = STYLE_SYSTEM;
+    puts("PASS 42 settings mappings, labels, visibility and dependent enablement");
+}
+
+static void test_classic_and_enhanced_navigation_contract(void) {
+    NavModel model;
+    NavEffect effect = NAV_EFFECT_NONE;
+    nav_model_init(&model, false);
+    assert(nav_model_set_platform(&model, NULL, "NES"));
+    assert(!nav_model_handle(&model, NULL, NAV_INPUT_CONFIRM, &effect));
+    assert(model.state.screen == NAV_PLATFORM_HOME);
+    nav_model_init(&model, true);
+    assert(nav_model_set_platform(&model, NULL, "NES"));
+    assert(nav_model_handle(&model, NULL, NAV_INPUT_CONFIRM, &effect));
+    assert(effect == NAV_EFFECT_OPEN_LIBRARY && model.state.screen == NAV_GAME_LIBRARY);
+    assert(nav_model_handle(&model, NULL, NAV_INPUT_BACK, &effect));
+    assert(effect == NAV_EFFECT_RETURN_TO_HOME && model.state.screen == NAV_PLATFORM_HOME);
+    puts("PASS Classic disabled and Enhanced navigation routing contract");
+}
+
+static void select_enhanced_setting(int row) {
+    int target = -1;
+    for (int i = 0; i < ENHANCED_SETTINGS_CATEGORY_COUNT; i++)
+        if (enhanced_settings_row_in_category(row, i)) target = i;
+    assert(target >= 0);
+    if (enhanced_settings_options_focused()) press(FROG_BTN_B);
+    while (enhanced_settings_category < target) press(FROG_BTN_DOWN);
+    while (enhanced_settings_category > target) press(FROG_BTN_UP);
+    press(FROG_BTN_A);
+    assert(enhanced_settings_options_focused());
+    int position = 0;
+    while (position < enhanced_settings_row_count() && enhanced_settings_row_at(position) != row)
+        position++;
+    assert(position < enhanced_settings_row_count());
+    while (enhanced_settings_row_cursor() < position) press(FROG_BTN_DOWN);
+    while (enhanced_settings_row_cursor() > position) press(FROG_BTN_UP);
+}
+
+static unsigned settings_shutdown_requests;
+
+static bool capture_settings_environment(unsigned command, void *data) {
+    (void)data;
+    if (command == RETRO_ENVIRONMENT_SHUTDOWN) settings_shutdown_requests++;
+    return false;
+}
+
+static void test_enhanced_settings_integration(void) {
+    for (int i = 0; i < SETTINGS_ROW_N; i++) {
+        int mapped = 0;
+        for (int j = 0; j < ENHANCED_SETTINGS_CATEGORY_COUNT; j++)
+            mapped += enhanced_settings_row_in_category(i, j);
+        assert(mapped == (settings_rows[i].type != RT_HEADER));
+    }
+    /* Exercise the original adapter with the shared operations in place. */
+    settings_graphical_home = 0;
+    settings_layout = SETTINGS_LAYOUT_SECTIONS;
+    settings_section_open[1] = true;
+    settings_brightness = 75;
+    settings_menu_active = true;
+    settings_menu_idx = SR_BRIGHTNESS;
+    handle_settings_menu();
+    press(FROG_BTN_RIGHT);
+    assert(settings_menu_active && settings_brightness == 80);
+    press(FROG_BTN_A);
+    assert(!settings_menu_active);
+    settings_brightness = 75;
+    settings_load_file();
+    assert(settings_brightness == 80);
+
+    strcpy(current_path, ROMS_PATH);
+    scan_directory(current_path);
+    settings_graphical_home = 1;
+    settings_render_scheme_idx = 0;
+    settings_style = STYLE_VERTICAL;
+    settings_apps_in_settings = 0;
+    int previous_apps = settings_apps_in_settings;
+    open_enhanced_settings();
+    assert(enhanced_settings_active() && enhanced_settings_category == 0);
+    press(FROG_BTN_UP);
+    assert(enhanced_settings_category == 0);
+    press(FROG_BTN_R1);
+    assert(enhanced_settings_active());
+
+    select_enhanced_setting(SR_UI_THEME);
+    int previous_theme = ui_theme_index();
+    press(FROG_BTN_A);
+    assert(enhanced_settings_selector_active);
+    press(FROG_BTN_DOWN);
+    assert(ui_theme_index() == previous_theme);
+    press(FROG_BTN_B);
+    assert(!enhanced_settings_selector_active && ui_theme_index() == previous_theme);
+    int selection = enhanced_settings_row_cursor();
+    press(FROG_BTN_B);
+    press(FROG_BTN_A);
+    assert(enhanced_settings_row_cursor() == selection);
+
+    press(FROG_BTN_A);
+    press(FROG_BTN_DOWN);
+    press(FROG_BTN_A);
+    assert(ui_theme_index() != previous_theme && enhanced_settings_active());
+    press(FROG_BTN_A);
+    press(FROG_BTN_UP);
+    press(FROG_BTN_A);
+    assert(ui_theme_index() == previous_theme);
+
+    select_enhanced_setting(SR_ICON_PACK);
+    assert(enhanced_settings_row_disabled(SR_ICON_PACK));
+    press(FROG_BTN_A);
+    assert(!enhanced_settings_selector_active);
+    select_enhanced_setting(SR_UI_SOUNDS);
+    assert(enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_UI_SOUNDS);
+    for (int i = 0; i < enhanced_settings_row_count(); i++)
+        assert(enhanced_settings_row_at(i) != SR_MENU_SOUNDS);
+    select_enhanced_setting(SR_VERSION);
+    press(FROG_BTN_A);
+    assert(enhanced_settings_options_focused() && !enhanced_settings_selector_active);
+
+    select_enhanced_setting(SR_RTC_TIME);
+    press(FROG_BTN_A);
+    assert(settings_rtc_edit_active);
+    press(FROG_BTN_RIGHT);
+    assert(settings_rtc_edit_field == RTC_MONTH);
+    press(FROG_BTN_B);
+    assert(!settings_rtc_edit_active && enhanced_settings_options_focused());
+
+    select_enhanced_setting(SR_ROM_SOURCE);
+    enhanced_settings_otg = false;
+    enhanced_settings_refresh();
+    int previous_source = settings_rom_source;
+    press(FROG_BTN_RIGHT);
+    press(FROG_BTN_A);
+    assert(settings_rom_source == previous_source && !enhanced_settings_selector_active);
+
+    select_enhanced_setting(SR_BUTTON_MAPPING);
+    press(FROG_BTN_A);
+    assert(remap_wizard_active && !settings_menu_active && remap_step == 0);
+    int count_buttons = remap_wizard_count();
+    for (int i = 0; i < count_buttons; i++) press(FROG_BTN_B);
+    assert(!remap_wizard_active && enhanced_settings_active());
+    assert(enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_BUTTON_MAPPING);
+
+    select_enhanced_setting(SR_LANGUAGE);
+    assert(i18n_scan_languages() > 1);
+    settings_language = 0;
+    environ_cb = capture_settings_environment;
+    press(FROG_BTN_A);
+    press(FROG_BTN_DOWN);
+    assert(settings_language == 0 && !settings_shutdown_requests);
+    press(FROG_BTN_A);
+    assert(settings_language == 1 && settings_shutdown_requests == 1);
+    environ_cb = NULL;
+    settings_language = 0;
+    assert(i18n_init("en_US"));
+
+    render_set_geometry(640, 480, 100);
+    assert(!framebuffer);
+    framebuffer = calloc(640 * 480, sizeof *framebuffer);
+    assert(framebuffer);
+    memset(enhanced_settings_icons, 0, sizeof enhanced_settings_icons);
+    for (int i = 0; i < ENHANCED_SETTINGS_CATEGORY_COUNT; i++) {
+        select_enhanced_setting(enhanced_settings_categories[i].rows[0]);
+        render_enhanced_settings_menu();
+    }
+    settings_panel_category_text("Long localized category title with more than two words",
+                                 16, 64, 184, 42, COLOR_TEXT);
+    settings_panel_text("An extremely long localized option value with many words",
+                        560, 120, 64, 38, COLOR_TEXT);
+    free(framebuffer);
+    framebuffer = NULL;
+
+    select_enhanced_setting(SR_APPS_IN_SETTINGS);
+    int count = enhanced_settings_row_count();
+    press(FROG_BTN_A);
+    assert(settings_apps_in_settings != previous_apps);
+    assert(enhanced_settings_row_count() == count + 1);
+    select_enhanced_setting(SR_OPEN_APPS);
+    press(FROG_BTN_A);
+    assert(settings_apps_origin && viewing_apps && !settings_menu_active);
+    press(FROG_BTN_B);
+    assert(enhanced_settings_active() &&
+           enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_OPEN_APPS);
+
+    select_enhanced_setting(SR_GRAPHICAL_HOME);
+    press(FROG_BTN_A);
+    assert(!settings_graphical_home && enhanced_settings_active());
+    press(FROG_BTN_B);
+    assert(enhanced_settings_active() && !enhanced_settings_options_focused());
+    press(FROG_BTN_B);
+    assert(!settings_menu_active && !enhanced_settings_visit);
+    puts("PASS Classic preview and persistence, Enhanced settings focus, selectors, RTC, Apps and mode exit");
 }
 
 static void test_bounded_artwork(const char *root) {
@@ -539,11 +798,7 @@ static void test_ribbon(const char *root) {
     assert(snprintf(path, sizeof path, "%s/RibbonEmpty", root) < (int)sizeof path);
     assert(mkdir(path, 0700) == 0);
     settings_hide_empty = 0;
-    for (int i = 0; i < SETTINGS_ROW_N; i++) {
-        if (!strcmp(settings_rows[i].label, "settings.system"))
-            settings_section_open[settings_section_of(i)] = true;
-        if (settings_rows[i].type == RT_CACHE_REBUILD) settings_menu_idx = i;
-    }
+    select_enhanced_setting(SR_REBUILD_CACHE);
     press(FROG_BTN_A);
     assert(!settings_menu_active && entry_count == stored_count + 1);
     prepare_enhanced_grid();
@@ -845,6 +1100,23 @@ static void test_platform_filelists(const char *root) {
     check_csv_title("Bad.nes", "Bad");
     check_csv_title("Large.nes", "Large");
     check_csv_title("Quotes.nes", "The \"Game\"");
+    file = fopen(csv, "wb");
+    assert(file);
+    fputs("Rom.ext,Display Title,ChineseTitle,Developer,Description\n"
+          "Large.nes,Retained title,,Studio,", file);
+    for (int i = 0; i < 300; i++) fputc('Z', file);
+    fputs("\nQuotes.nes,Valid title,,Studio,", file);
+    for (int i = 0; i < 250; i++) fputc('A', file);
+    assert(fclose(file) == 0);
+    scan_directory(current_path);
+    check_csv_title("Large.nes", "Retained title");
+    const char *value = filelist_details + filelist_detail_offsets[selected_index] - 1;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) value += strlen(value) + 1;
+    assert(!*value);
+    check_csv_title("Quotes.nes", "Valid title");
+    value = filelist_details + filelist_detail_offsets[selected_index] - 1;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) value += strlen(value) + 1;
+    assert(strlen(value) == 250);
     strcpy(current_path, nested);
     scan_directory(current_path);
     check_csv_title("Plain.nes", "Plain");
@@ -879,14 +1151,18 @@ static void test_platform_filelists(const char *root) {
     assert(entry_count == discovered + 1500);
     file = fopen(csv, "wb");
     assert(file);
-    for (int i = 0; i < 1500; i++) fprintf(file, "Item%04d.nes,Title %04d,\n", i, i);
+    fputs("Rom.ext,Display Title,ChineseTitle,Description\n", file);
+    for (int i = 0; i < 1500; i++)
+        fprintf(file, "Item%04d.nes,Title %04d,,Summary %04d\n", i, i, i);
     assert(fclose(file) == 0);
     start = monotonic_ms();
     scan_directory(current_path);
     long long with = monotonic_ms() - start;
     check_csv_title("Item1499.nes", "Title 1499");
     printf("Filelist fixture: 1500 mapped ROMs, %zu bytes retained, scans %lld ms without / %lld ms with CSV\n",
-           filelist_capacity + (size_t)entry_count * sizeof(*filelist_offsets), without, with);
+           filelist_capacity + filelist_detail_capacity +
+           (size_t)entry_count * (sizeof(*filelist_offsets) + sizeof(*filelist_detail_offsets)),
+           without, with);
     file = fopen(csv, "wb");
     assert(file && ftruncate(fileno(file), 1024 * 1024 + 1) == 0);
     assert(fclose(file) == 0);
@@ -920,6 +1196,8 @@ static void test_ra_home(const char *root) {
     assert(unlink(profile) == 0 && unlink(avatar) == 0);
     uint16_t *frame = calloc(640 * 480, sizeof(*frame));
     assert(frame);
+    load_ra_trophy();
+    assert(ra_trophy_icon.pixels && ra_trophy_icon.alpha[0] == 0);
     for (int i = 0; i < 4; i++) render_ra_home(frame);
     size_t painted = 0;
     bool left_pill = false, right_pill = false, central_gap_clear = true;
@@ -956,6 +1234,180 @@ static void test_ra_home(const char *root) {
     load_ra_home(directory);
     assert(!ra_home_profile_valid);
     puts("PASS offline RA identity, avatar validation, snapshot drawing, and unsupported data");
+}
+
+static void ra_game_fixture(const char *root, bool create) {
+    static const char *directories[] = {
+        "cubegm", "cubegm/enhanced", "cubegm/enhanced/ra", "cubegm/enhanced/ra/cache",
+        "cubegm/enhanced/ra/cache/7",
+        "cubegm/enhanced/ra/cache/7/0123456789abcdef0123456789abcdef"
+    };
+    char path[1024];
+    if (!create) {
+        snprintf(path, sizeof path, "%s/%s/gamepack.json", root, directories[5]);
+        assert(unlink(path) == 0);
+        snprintf(path, sizeof path, "%s/cubegm/enhanced/ra/rom_identity.json", root);
+        assert(unlink(path) == 0);
+        for (size_t i = sizeof directories / sizeof directories[0]; i > 0; i--) {
+            snprintf(path, sizeof path, "%s/%s", root, directories[i - 1]);
+            assert(rmdir(path) == 0);
+        }
+        return;
+    }
+    for (size_t i = 0; i < sizeof directories / sizeof directories[0]; i++) {
+        assert(snprintf(path, sizeof path, "%s/%s", root, directories[i]) < (int)sizeof path);
+        assert(mkdir(path, 0700) == 0);
+    }
+    assert(snprintf(path, sizeof path, "%s/cubegm/enhanced/ra/rom_identity.json", root) <
+           (int)sizeof path);
+    char rom[1024], identity[1024];
+    struct stat st;
+    assert(snprintf(rom, sizeof rom, "%s/NoArtwork/Example.nes", root) < (int)sizeof rom);
+    assert(stat(rom, &st) == 0);
+    assert(snprintf(identity, sizeof identity,
+        "{\"Other/Rom.NES\":{\"size\":1,\"metadata_only\":true},"
+        "\"NoArtwork/Example.nes\":{\"platform\":\"NoArtwork\",\"console_id\":7,"
+        "\"game_id\":40,\"ra_hash\":\"0123456789abcdef0123456789abcdef\","
+        "\"method\":\"rcheevos_compatible\",\"size\":0,\"mtime_ns\":%lld,"
+        "\"metadata_only\":true}}", (long long)st.st_mtime * 1000000000LL) < (int)sizeof identity);
+    write_fixture(path, identity);
+    assert(snprintf(path, sizeof path, "%s/%s/gamepack.json", root, directories[5]) <
+           (int)sizeof path);
+    write_fixture(path,
+        "{\"schema_version\":1,\"console_id\":7,\"game_id\":40,"
+        "\"ra_hash\":\"0123456789abcdef0123456789abcdef\",\"metadata_only\":true,"
+        "\"achievements\":[{\"id\":1,\"title\":\"First step\",\"points\":5},"
+        "{\"id\":2,\"title\":\"Second step\",\"description\":\"Explore the cave\",\"points\":10}]}");
+}
+
+static void test_apps_coverflow(const char *root) {
+    char path[1024], assets[1024];
+    assert(snprintf(path, sizeof path, "%s/Ebook", root) < (int)sizeof path);
+    assert(mkdir(path, 0700) == 0);
+    assert(snprintf(assets, sizeof assets, "%s/.app-icons", root) < (int)sizeof assets);
+    assert(mkdir(assets, 0700) == 0);
+    assert(snprintf(path, sizeof path, "%s/theme.ini", assets) < (int)sizeof path);
+    write_fixture(path, "[theme]\nmanifest_version=1\n"
+                        "[resource.app.usbmode.icon]\npath=valid.png\n"
+                        "[resource.app.ebook.icon]\npath=corrupt.png\n");
+    assert(snprintf(path, sizeof path, "%s/valid.png", assets) < (int)sizeof path);
+    write_bytes(path, icon_png, sizeof icon_png);
+    assert(snprintf(path, sizeof path, "%s/corrupt.png", assets) < (int)sizeof path);
+    write_bytes(path, corrupt_png, sizeof corrupt_png);
+    assert(!enhanced_theme);
+    enhanced_theme = theme_resource_create(assets, THEME_RESOURCE_CACHE_MAX);
+    assert(enhanced_theme && theme_resource_load_manifest(enhanced_theme, "theme.ini"));
+    assert(!framebuffer);
+    framebuffer = calloc(640 * 480, sizeof *framebuffer);
+    assert(framebuffer);
+
+    test_app_executables = true;
+    assert(setenv("TF_DEVICE", "R36SX", 1) == 0);
+    settings_graphical_home = 1;
+    settings_apps_in_settings = 0;
+    viewing_recents = viewing_apps = viewing_favourites = viewing_search = false;
+    strcpy(current_path, ROMS_PATH);
+    scan_directory(current_path);
+    enhanced_home_kind = ENHANCED_HOME_APPS;
+    press(FROG_BTN_A);
+    assert(enhanced_apps_view() && entry_count >= 4);
+
+    int usb = visible_entry_named("usbmode"), ebook = visible_entry_named("ebook");
+    assert(usb >= 0 && ebook >= 0);
+    selected_index = usb;
+    prepare_enhanced_library(true);
+    assert(coverflow_apps && coverflow_images[usb - coverflow_first]);
+    assert(!coverflow_images[ebook - coverflow_first]);
+    render_enhanced_apps(framebuffer);
+    press(FROG_BTN_A);
+    assert(usb_mode_confirm_active && !usb_mode_initiated_active);
+    press(FROG_BTN_B);
+    assert(!usb_mode_confirm_active && enhanced_apps_view() && selected_index == usb);
+
+    selected_index = 0;
+    press(FROG_BTN_LEFT);
+    assert(selected_index == 0);
+    int motion_before = settings_anim;
+    settings_anim = true;
+    prepare_enhanced_library(false);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    assert(selected_index == 1 && coverflow_animating());
+    settings_anim = false;
+    prepare_enhanced_library(false);
+    assert(!coverflow_animating());
+    settings_anim = motion_before;
+    selected_index = entry_count - 1;
+    press(FROG_BTN_RIGHT);
+    assert(selected_index == entry_count - 1);
+
+    selected_index = ebook;
+    press(FROG_BTN_A);
+    assert(apps_browsing && !enhanced_apps_view());
+    press(FROG_BTN_B);
+    assert(enhanced_apps_view() && selected_index == ebook);
+
+    const char *keys[] = {"reboot", "shutdown"};
+    const char *bin[] = {REBOOT_BIN, SHUTDOWN_BIN};
+    for (int i = 0; i < 2; i++) {
+        selected_index = visible_entry_named(keys[i]);
+        assert(selected_index >= 0);
+        press(FROG_BTN_A);
+        /* The wrapped launcher writes only to the fixture. There is no runtime callback. */
+        FILE *file = fopen(LAUNCH_FILE, "r");
+        char line[512];
+        assert(file && fgets(line, sizeof line, file) && !strcmp(line, "standalone\n"));
+        assert(fgets(line, sizeof line, file));
+        line[strcspn(line, "\n")] = 0;
+        assert(!strcmp(line, bin[i]));
+        fclose(file);
+    }
+
+    assert(setenv("TF_DEVICE", "SF3000", 1) == 0);
+    scan_apps_tab();
+    assert(visible_entry_named("shutdown") < 0);
+    assert(unsetenv("TF_DEVICE") == 0);
+    int count = entry_count;
+    for (int small = 0; small <= 1; small++) {
+        entry_count = small;
+        selected_index = 0;
+        prepare_enhanced_library(true);
+        render_enhanced_apps(framebuffer);
+        press(FROG_BTN_LEFT);
+        press(FROG_BTN_RIGHT);
+        assert(selected_index == 0);
+    }
+    entry_count = count;
+    press(FROG_BTN_B);
+    assert(enhanced_home_view() && enhanced_home_kind == ENHANCED_HOME_APPS);
+
+    settings_apps_in_settings = 1;
+    open_enhanced_settings();
+    select_enhanced_setting(SR_OPEN_APPS);
+    press(FROG_BTN_A);
+    assert(enhanced_apps_view() && settings_apps_origin);
+    press(FROG_BTN_B);
+    assert(enhanced_settings_active() &&
+           enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_OPEN_APPS);
+    press(FROG_BTN_B);
+    press(FROG_BTN_B);
+    assert(!settings_menu_active);
+    settings_apps_in_settings = 0;
+
+    settings_graphical_home = 0;
+    scan_apps_tab();
+    assert(viewing_apps && !enhanced_apps_view());
+    switch_main_tab(MAIN_TAB_GAMES);
+    settings_graphical_home = 1;
+    test_app_executables = false;
+    theme_resource_destroy(enhanced_theme);
+    enhanced_theme = NULL;
+    system_icons_clear();
+    free(framebuffer);
+    framebuffer = NULL;
+    assert(snprintf(path, sizeof path, "%s/Ebook", root) < (int)sizeof path);
+    assert(rmdir(path) == 0);
+    puts("PASS Apps shared CoverFlow, artwork, device restrictions, dispatch, submenus and return");
 }
 
 int main(int argc, char **argv) {
@@ -1009,7 +1461,25 @@ int main(int argc, char **argv) {
     write_fixture(second_rom, "");
     char launch_csv[MAX_PATH_LEN];
     assert(snprintf(launch_csv, sizeof launch_csv, "%s/filelist.csv", collection) < (int)sizeof launch_csv);
-    write_fixture(launch_csv, "Example.nes,Custom Launch Title,\n");
+    write_fixture(launch_csv,
+                  "\xef\xbb\xbfRom.ext,Display Title,ChineseTitle,Players,Misc,Description,"
+                  "Developer,ReleaseYear,Publisher,Original Title,Genre,Developer\r\n"
+                  "Example.nes,Custom Launch Title,,2,skip,"
+                  "\"Explore a Pokémon cave, and find a hidden map.\","
+                  "Studio,1994,Publisher,Example Original,Platformer,Duplicate\r\n"
+                  "Second.nes,,,1,,\xff,Valid Studio,,,,\r\n"
+                  "Second.nes,,,9,,Ignored duplicate,,,,,\r\n");
+    assert(snprintf(test_sessions, sizeof test_sessions, "%s/.sessions", argv[1]) <
+           (int)sizeof test_sessions);
+    assert(snprintf(test_playtime, sizeof test_playtime, "%s/.playtime", argv[1]) <
+           (int)sizeof test_playtime);
+    char ledger[2048];
+    assert(snprintf(ledger, sizeof ledger, "1730246400\t120\t%s\n0\t45\t%s\n"
+                    "1730160000\t80\t%s\nnot-a-date\t999\t%s\n50\t999\t/elsewhere/Example.nes\n",
+                    rom, rom, rom, rom) < (int)sizeof ledger);
+    write_fixture(test_sessions, ledger);
+    assert(snprintf(ledger, sizeof ledger, "630\t%s\n380\t%s\n", second_rom, rom) < (int)sizeof ledger);
+    write_fixture(test_playtime, ledger);
     settings_file_cache = 0;
     scan_directory(ROMS_PATH);
     assert(entry_count == 2 && entries[0].is_dir && entries[1].is_dir);
@@ -1044,6 +1514,18 @@ int main(int argc, char **argv) {
     assert(enhanced_details_view() && access(test_launch, F_OK) != 0);
     check_csv_title("Example.nes", "Custom Launch Title");
     assert(strcmp(details_title_text, "Custom Launch Title") == 0);
+    uint32_t details_offset = filelist_detail_offsets[selected_index];
+    assert(details_offset);
+    const char *original_title = filelist_details + details_offset - 1;
+    assert(strcmp(original_title, "Example Original") == 0);
+    assert(strcmp(original_title + strlen(original_title) + 1, "1994") == 0);
+    const char *field = original_title;
+    for (int i = 0; i < FILELIST_DESCRIPTION; i++) field += strlen(field) + 1;
+    assert(strcmp(field, "Explore a Pokémon cave, and find a hidden map.") == 0);
+    assert(details_recent_rank(selected_index) == -1);
+    prepare_details_metrics();
+    assert(details_play_stats.runs == 3 && details_play_stats.seconds == 380);
+    assert(details_play_stats.last == 1730246400 && details_play_stats.last_seconds == 120);
     assert(details_cover_transition_frame == 0);
     uint16_t *details_frame = calloc((size_t)SCREEN_WIDTH * SCREEN_HEIGHT, sizeof *details_frame);
     assert(details_frame);
@@ -1068,7 +1550,7 @@ int main(int argc, char **argv) {
     int left_y = HEADER_HEIGHT + UI_S(20) + SCREEN_HEIGHT * 52 / 200;
     assert(details_cover_transition_frame == SYSTEM_CAROUSEL_FRAMES);
     assert(details_frame[left_y * SCREEN_WIDTH + left_x] == red);
-    assert(details_frame[left_y * SCREEN_WIDTH + SCREEN_WIDTH * 3 / 4] == 0);
+    assert(details_frame[left_y * SCREEN_WIDTH + SCREEN_WIDTH * 3 / 4] != red);
     coverflow_images[selected_index - coverflow_first] = NULL;
     int arrow_row = SCREEN_HEIGHT / 2 * SCREEN_WIDTH;
     assert(details_frame[arrow_row + UI_S(8)] == 0);
@@ -1080,6 +1562,16 @@ int main(int argc, char **argv) {
     assert(selected_index == 1 && strcmp(enhanced_settings_navigation.state.game_id, "Second.nes") == 0);
     prepare_enhanced_library(false);
     assert(strcmp(details_title_text, "Second") == 0);
+    prepare_details_metrics();
+    assert(details_play_stats.seconds == 630 && !details_play_stats.runs &&
+           !details_play_stats.last && !details_play_stats.last_seconds);
+    assert(filelist_detail_offsets[1]);
+    const char *second_detail = filelist_details + filelist_detail_offsets[1] - 1;
+    for (int i = 0; i < FILELIST_DEVELOPER; i++) second_detail += strlen(second_detail) + 1;
+    assert(!strcmp(second_detail, "Valid Studio"));
+    for (int i = FILELIST_DEVELOPER; i < FILELIST_DESCRIPTION; i++)
+        second_detail += strlen(second_detail) + 1;
+    assert(!*second_detail);
     memset(details_frame, 0, (size_t)SCREEN_WIDTH * SCREEN_HEIGHT * sizeof *details_frame);
     render_enhanced_game_details(details_frame);
     assert(details_frame[arrow_row + UI_S(14) - UI_S(6)] == COLOR_TEXT);
@@ -1092,6 +1584,39 @@ int main(int argc, char **argv) {
     press(FROG_BTN_LEFT);
     assert(enhanced_details_view() && selected_index == 0);
     assert(strcmp(enhanced_settings_navigation.state.game_id, "Example.nes") == 0);
+    prepare_details_achievements(ROMS_PATH);
+    assert(!details_achievements_valid);
+    press(FROG_BTN_L2);
+    assert(enhanced_details_view());
+    ra_game_fixture(ROMS_PATH, true);
+    details_achievement_game = -1;
+    prepare_details_achievements(ROMS_PATH);
+    assert(details_achievements_valid && details_achievements.achievement_count == 2);
+    press(FROG_BTN_L2);
+    assert(enhanced_achievements_view());
+    render_enhanced_achievements(details_frame);
+    press(FROG_BTN_DOWN);
+    assert(details_achievement_index == 1);
+    press(FROG_BTN_START);
+    assert(settings_menu_active &&
+           enhanced_settings_navigation.state.settings_return == NAV_ACHIEVEMENTS_GALLERY);
+    press(FROG_BTN_B);
+    prepare_details_achievements(ROMS_PATH);
+    assert(enhanced_achievements_view() && details_achievement_index == 1);
+    press(FROG_BTN_B);
+    assert(enhanced_details_view() && selected_index == 0);
+    press(FROG_BTN_RIGHT);
+    prepare_enhanced_library(false);
+    prepare_details_achievements(ROMS_PATH);
+    assert(selected_index == 1 && !details_achievements_valid);
+    assert(strcmp(details_title_text, "Second") == 0);
+    press(FROG_BTN_L2);
+    assert(enhanced_details_view());
+    press(FROG_BTN_LEFT);
+    prepare_enhanced_library(false);
+    prepare_details_achievements(ROMS_PATH);
+    assert(selected_index == 0 && details_achievements_valid);
+    ra_game_fixture(ROMS_PATH, false);
     free(details_frame);
     press(FROG_BTN_START);
     assert(settings_menu_active && enhanced_settings_navigation.state.settings_return == NAV_GAME_DETAILS);
@@ -1116,6 +1641,8 @@ int main(int argc, char **argv) {
     assert(strcmp(core_line, CORES_PATH "/quicknes_libretro.so\n") == 0);
     rom_line[strcspn(rom_line, "\n")] = 0;
     assert(strcmp(rom_line, rom) == 0);
+    assert(details_recent_rank(selected_index) == 0);
+    assert(details_recent_rank(1) == -1);
     press(FROG_BTN_B);
     assert(strcmp(current_path, ROMS_PATH) == 0 && icon_system_view());
     assert(strcmp(entries[selected_index].name, "NoArtwork") == 0);
@@ -1138,12 +1665,16 @@ int main(int argc, char **argv) {
     scan_directory(ROMS_PATH);
     assert(entry_count == 3);
     test_bounded_artwork(argv[1]);
+    test_settings_mapping_contract();
+    test_classic_and_enhanced_navigation_contract();
     test_enhanced_art(argv[1]);
     test_ui_sounds(argv[1]);
     test_ribbon(argv[1]);
     test_coverflow(argv[1]);
+    test_apps_coverflow(argv[1]);
     test_home_ribbon_presentation();
     test_platform_filelists(argv[1]);
     test_ra_home(argv[1]);
+    test_enhanced_settings_integration();
     return 0;
 }
