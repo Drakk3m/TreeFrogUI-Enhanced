@@ -50,3 +50,5 @@ Use the separate TreeFrogUI test SD. Power off and back up `cubegm/cores/frogui_
 5. Confirm B restores the platform highlight on Home. Disable Enhanced and verify the classic lists, grids and launch behavior. Repeat the game test.
 
 To roll back, power off and restore the P4.2 shared object from the backup, plus settings and language backups as needed. Verify the accepted P4.2 hash before booting.
+
+The earlier P5 hotfix acceptance remains on record. See the [P8 physical retest matrix and outstanding tests](enhanced-navigation.md#current-enhanced-development-baseline) for results on the cumulative candidate.

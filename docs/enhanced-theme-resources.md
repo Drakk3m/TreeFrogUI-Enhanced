@@ -151,3 +151,14 @@ The R36SX v2.7 test base `cubegm/dtb.bin` identifies Hichip hc16xx and declares 
 | Measured load | The host integration test loaded a generated 640×480 BMP through the live path. It recorded 7 malloc calls totaling 2,564,646 bytes, with a largest request of 921,654. It recorded zero malloc calls during native row conversion and reuse of the settled backdrop. These are allocation requests on the fixture, rather than peak RSS or a measurement of every codec. |
 
 The manager owns its directory descriptor, manifest table and metadata cache. The decoded icon LRU releases pixels and alpha on eviction, theme switch or unload. The banner owns a submitted RGB buffer until native conversion completes, and releases its old target when replaced. The caller frees the encoded blob immediately after native decoding. A failed decode leaves ownership with the caller and routes to native fallback.
+
+## Application icons
+
+Enhanced Apps accepts optional app.<clave>.icon entries in the existing theme manifest. The key is the stable app_defs ID, such as usbmode, ebook or frogshell. Use theme-local asset paths. For example:
+
+~~~ini
+[resource.app.usbmode.icon]
+path=icons/usb.png
+~~~
+
+PNG alpha and aspect ratio are preserved. Files follow the ordinary icon limits, with decoded artwork retained at up to 160 pixels per edge in the existing icon cache. The Apps view resolves visible artwork outside drawing and uses native fallback symbols for missing or invalid resources. Existing packs need no new files.

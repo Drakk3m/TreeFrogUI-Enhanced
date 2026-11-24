@@ -103,3 +103,53 @@ P4 should reuse smoothstep and the offset handover approach. The new row needs n
 `launch_by_path` resolves existing overrides, folder aliases and extension fallbacks. `request_game_launch` writes core and ROM paths to the existing handoff file, records history and asks the frontend to shut down. The device launcher consumes the handoff, runs PicoArch or a standalone app and restarts FrogUI when it exits. A consumed request and a new FrogUI process do not distinguish game return reliably from cold boot. Existing Recents and Quick Resume may still operate by their existing policies.
 
 The optional versioned navigation snapshot is an explicit caller operation. Its validator resolves platform and game identities against the discovered model. Unsupported, malformed and stale snapshots fail safely. No writes in the frame loop, no automatic restoration at startup, and no edits to Settings, history or favourites files. Automatic return to Details is deferred until the runtime exposes an explicit, trustworthy resume signal.
+
+## Current Enhanced development baseline
+
+The physically tested frontend is P8 commit d694a794122f40bf6ed1859b17874a6456b55a9a, tagged enhanced-p8-physical-baseline. The tested frogui_libretro.so SHA-256 is 765202300f9cb27b32146bf666138d530c6aa2e6ffc635e643e182f05d6f29dd. This is a development baseline with open validation, not a production release. Later documentation commits do not change the tested implementation.
+
+| Component | Passed | Pending | Failed |
+|---|---:|---:|---:|
+| P5 CoverFlow retest | 0 | 5 | 0 |
+| P6 Game Details | 8 | 0 | 0 |
+| P6 RetroAchievements | 2 | 5 | 0 |
+| P7 Enhanced Settings | 12 | 0 | 0 |
+| P8 Apps CoverFlow | 10 | 0 | 0 |
+| General regressions | 5 | 0 | 0 |
+| Total | 37 | 10 | 0 |
+
+The operator reported no observations. P6 Game Details, P7 and P8 are physically accepted. The P5 retest is additional coverage on this specific binary. Earlier physical acceptance for the P5 Home Ribbon hotfix (tag p5-home-hotfix-accepted), P5.1 filelist and P5.2 HUD remains valid at the revisions tested. The P5.1 and P5.2 integrations are recorded in fork PRs #2–#4.
+
+### Pending physical validation
+
+**P5 CoverFlow**
+
+- Load real artwork from the SD.
+- Check missing and corrupt artwork fallback.
+- Measure large-library navigation performance on the SD.
+- Verify Reduced Motion.
+- Reach every Home Ribbon destination.
+
+**P6 RetroAchievements**
+
+- Check L2 availability for games with valid RA packages.
+- Check achievement badges, descriptions and points.
+- Check vertical achievement navigation.
+- Confirm the gallery returns to the same game.
+- Confirm unknown progress is never shown as verified unlocks.
+
+FrogUI validates the exported file identity and package agreement without independently recalculating the ROM content hash. A replacement retaining size and modification time could pass this check. See [offline game information](enhanced-game-information.md) for the format and limitations.
+
+### Settings and Apps architecture
+
+P7 keeps one settings table, persistence path, and set of adjustment and activation operations. Classic retains its navigation and presentation adapter. Enhanced uses the same operations through a two-panel NavModel adapter, retaining origin and category context.
+
+P8 shares the game CoverFlow window, easing, distance scaling, draw order and aspect-fit blitter. Apps discovery remains in scan_apps_tab and app_defs. Selection invokes the existing activation and confirmation paths. Apps artwork is resolved by stable virtual key through [the theme resource contract](enhanced-theme-resources.md#application-icons). ROM discovery, identity and artwork resolution remain separate.
+
+### Remaining frontend roadmap
+
+1. P9 — Enhanced Recents & Favorites. Start from the exact P8 development-baseline tag above.
+2. P10 — Theme System Consolidation.
+3. P11 — Frontend Final Audit.
+
+PicoArch changes, core compatibility and the RetroAchievements runtime are separate future work. Complete the outstanding retests and review the cumulative frontend PR before authorizing integration. Update the parent submodule only after the frontend integration has been authorized and its resulting source tree is verified.
