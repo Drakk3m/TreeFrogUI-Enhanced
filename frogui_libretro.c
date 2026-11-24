@@ -1220,13 +1220,106 @@ typedef struct {
     int rmin, rmax, rstep;  /* RANGE bounds */
 } SRow;
 
+enum SettingsRowId {
+    SR_APPEARANCE,
+    SR_UI_THEME,
+    SR_THEME_PACK,
+    SR_SETTINGS_STYLE,
+    SR_GRAPHICAL_HOME,
+    SR_PILLS,
+    SR_ICON_PACK,
+    SR_CENTER_TEXT,
+    SR_FRIENDLY_NAMES,
+    SR_FONT,
+    SR_FONT_SIZE,
+    SR_BATTERY_COLOR,
+    SR_STOCK_BATTERY,
+    SR_BACKGROUNDS,
+    SR_BACKGROUND_DIM,
+    SR_WALLPAPER,
+    SR_WALLPAPER_FIT,
+    SR_GENERAL,
+    SR_LANGUAGE,
+    SR_BRIGHTNESS,
+    SR_ANIMATIONS,
+    SR_MENU_SOUNDS,
+    SR_UI_SOUNDS,
+    SR_HIDE_EXTENSIONS,
+    SR_HIDE_EMPTY,
+    SR_LIBRARY,
+    SR_APPS_IN_SETTINGS,
+    SR_OPEN_APPS,
+    SR_ROM_SOURCE,
+    SR_OTG_STATUS,
+    SR_GAME_SWITCHER,
+    SR_ROUNDED_SCREENSHOTS,
+    SR_START_IN_RECENTS,
+    SR_GAMEPLAY,
+    SR_QUICK_RESUME,
+    SR_AUTOSAVE,
+    SR_CUSTOM_ASPECT,
+    SR_RTC,
+    SR_RTC_TIME,
+    SR_RTC_SYNC,
+    SR_RTC_BUMP,
+    SR_SYSTEM,
+    SR_VOLUME,
+    SR_FILE_CACHE,
+    SR_REBUILD_CACHE,
+    SR_DISABLE_SLEEP,
+    SR_BUTTON_MAPPING,
+    SR_VERSION,
+};
+
 static const SRow settings_rows[] = {
-    { RT_HEADER, "settings.appearance" }, { RT_UI_THEME, "UI theme" }, { RT_THEME_PACK, "settings.background_theme_pack" }, { RT_SETTINGS_LAYOUT, "Settings style" }, { RT_TOGGLE, "Enhanced graphical platform home", &settings_graphical_home }, { RT_TOGGLE, "Decorative pills", &settings_pillboxes }, { RT_ICON_PACK, "settings.icon_pack" }, { RT_TOGGLE, "settings.center_text", &settings_center_text }, { RT_TOGGLE, "settings.friendly_system_names", &settings_friendly_names }, { RT_FONT, "settings.font" }, { RT_RANGE, "settings.font_size", &settings_font_size, 18, 26, 1 }, { RT_TOGGLE, "settings.battery_colour_mode", &settings_battery_color }, { RT_TOGGLE, "settings.stock_battery_indicator", &settings_stock_battery }, { RT_TOGGLE, "settings.background_images", &settings_backgrounds }, { RT_RANGE, "settings.background_dim", &settings_background_dim, 0, 100, 5 }, { RT_WALLPAPER, "settings.wallpaper" }, { RT_WALLFIT, "settings.background_image_fit" },
-    { RT_HEADER, "settings.general" }, { RT_LANGUAGE, "settings.language", &settings_language }, { RT_RANGE, "settings.brightness", &settings_brightness, 0, 100, SETTINGS_BRIGHTNESS_STEP }, { RT_TOGGLE, "settings.animations", &settings_anim }, { RT_TOGGLE, "settings.menu_sounds", &settings_menu_sounds }, { RT_TOGGLE, "settings.ui_sounds", &settings_ui_sounds }, { RT_TOGGLE, "settings.hide_extensions", &settings_hide_extensions }, { RT_TOGGLE, "settings.hide_empty_folders", &settings_hide_empty },
-    { RT_HEADER, "settings.library" }, { RT_TOGGLE, "Apps in Settings", &settings_apps_in_settings }, { RT_OPEN_APPS, "Open Apps" }, { RT_ROM_SOURCE, "settings.rom_source" }, { RT_OTG_STATUS, "settings.otg_storage" }, { RT_TOGGLE, "settings.game_switcher", &settings_game_switcher }, { RT_TOGGLE, "Rounded recents screenshots", &settings_rounded_screenshots }, { RT_TOGGLE, "settings.start_in_recents", &settings_load_recents },
-    { RT_HEADER, "settings.gameplay" }, { RT_TOGGLE, "settings.quick_resume", &settings_quick_resume }, { RT_TOGGLE, "settings.autosave_autoload", &settings_autosave_autoload }, { RT_TOGGLE, "settings.custom_aspect_ratios", &settings_custom_aspect_ratios },
-    { RT_HEADER, "settings.rtc_emulation" }, { RT_RTC_TIME, "settings.rtc_time" }, { RT_RTC_SYNC, "settings.rtc_sync_usb" }, { RT_RANGE, "settings.rtc_bump", &settings_rtc_bump_minutes, 0, 1440, 5 },
-    { RT_HEADER, "settings.system" }, { RT_RANGE, "settings.volume", &settings_volume, 0, 100, 5 }, { RT_TOGGLE, "settings.file_cache", &settings_file_cache }, { RT_CACHE_REBUILD, "settings.rebuild_file_cache" }, { RT_TOGGLE, "settings.disable_sleep", &settings_disable_sleep }, { RT_ACTION, "settings.button_mapping" }, { RT_INFO, "settings.version" },
+    [SR_APPEARANCE] = { RT_HEADER, "settings.appearance" },
+    [SR_UI_THEME] = { RT_UI_THEME, "UI theme" },
+    [SR_THEME_PACK] = { RT_THEME_PACK, "settings.background_theme_pack" },
+    [SR_SETTINGS_STYLE] = { RT_SETTINGS_LAYOUT, "Settings style" },
+    [SR_GRAPHICAL_HOME] = { RT_TOGGLE, "Enhanced graphical platform home", &settings_graphical_home },
+    [SR_PILLS] = { RT_TOGGLE, "Decorative pills", &settings_pillboxes },
+    [SR_ICON_PACK] = { RT_ICON_PACK, "settings.icon_pack" },
+    [SR_CENTER_TEXT] = { RT_TOGGLE, "settings.center_text", &settings_center_text },
+    [SR_FRIENDLY_NAMES] = { RT_TOGGLE, "settings.friendly_system_names", &settings_friendly_names },
+    [SR_FONT] = { RT_FONT, "settings.font" },
+    [SR_FONT_SIZE] = { RT_RANGE, "settings.font_size", &settings_font_size, 18, 26, 1 },
+    [SR_BATTERY_COLOR] = { RT_TOGGLE, "settings.battery_colour_mode", &settings_battery_color },
+    [SR_STOCK_BATTERY] = { RT_TOGGLE, "settings.stock_battery_indicator", &settings_stock_battery },
+    [SR_BACKGROUNDS] = { RT_TOGGLE, "settings.background_images", &settings_backgrounds },
+    [SR_BACKGROUND_DIM] = { RT_RANGE, "settings.background_dim", &settings_background_dim, 0, 100, 5 },
+    [SR_WALLPAPER] = { RT_WALLPAPER, "settings.wallpaper" },
+    [SR_WALLPAPER_FIT] = { RT_WALLFIT, "settings.background_image_fit" },
+    [SR_GENERAL] = { RT_HEADER, "settings.general" },
+    [SR_LANGUAGE] = { RT_LANGUAGE, "settings.language", &settings_language },
+    [SR_BRIGHTNESS] = { RT_RANGE, "settings.brightness", &settings_brightness, 0, 100, SETTINGS_BRIGHTNESS_STEP },
+    [SR_ANIMATIONS] = { RT_TOGGLE, "settings.animations", &settings_anim },
+    [SR_MENU_SOUNDS] = { RT_TOGGLE, "settings.menu_sounds", &settings_menu_sounds },
+    [SR_UI_SOUNDS] = { RT_TOGGLE, "settings.ui_sounds", &settings_ui_sounds },
+    [SR_HIDE_EXTENSIONS] = { RT_TOGGLE, "settings.hide_extensions", &settings_hide_extensions },
+    [SR_HIDE_EMPTY] = { RT_TOGGLE, "settings.hide_empty_folders", &settings_hide_empty },
+    [SR_LIBRARY] = { RT_HEADER, "settings.library" },
+    [SR_APPS_IN_SETTINGS] = { RT_TOGGLE, "Apps in Settings", &settings_apps_in_settings },
+    [SR_OPEN_APPS] = { RT_OPEN_APPS, "Open Apps" },
+    [SR_ROM_SOURCE] = { RT_ROM_SOURCE, "settings.rom_source" },
+    [SR_OTG_STATUS] = { RT_OTG_STATUS, "settings.otg_storage" },
+    [SR_GAME_SWITCHER] = { RT_TOGGLE, "settings.game_switcher", &settings_game_switcher },
+    [SR_ROUNDED_SCREENSHOTS] = { RT_TOGGLE, "Rounded recents screenshots", &settings_rounded_screenshots },
+    [SR_START_IN_RECENTS] = { RT_TOGGLE, "settings.start_in_recents", &settings_load_recents },
+    [SR_GAMEPLAY] = { RT_HEADER, "settings.gameplay" },
+    [SR_QUICK_RESUME] = { RT_TOGGLE, "settings.quick_resume", &settings_quick_resume },
+    [SR_AUTOSAVE] = { RT_TOGGLE, "settings.autosave_autoload", &settings_autosave_autoload },
+    [SR_CUSTOM_ASPECT] = { RT_TOGGLE, "settings.custom_aspect_ratios", &settings_custom_aspect_ratios },
+    [SR_RTC] = { RT_HEADER, "settings.rtc_emulation" },
+    [SR_RTC_TIME] = { RT_RTC_TIME, "settings.rtc_time" },
+    [SR_RTC_SYNC] = { RT_RTC_SYNC, "settings.rtc_sync_usb" },
+    [SR_RTC_BUMP] = { RT_RANGE, "settings.rtc_bump", &settings_rtc_bump_minutes, 0, 1440, 5 },
+    [SR_SYSTEM] = { RT_HEADER, "settings.system" },
+    [SR_VOLUME] = { RT_RANGE, "settings.volume", &settings_volume, 0, 100, 5 },
+    [SR_FILE_CACHE] = { RT_TOGGLE, "settings.file_cache", &settings_file_cache },
+    [SR_REBUILD_CACHE] = { RT_CACHE_REBUILD, "settings.rebuild_file_cache" },
+    [SR_DISABLE_SLEEP] = { RT_TOGGLE, "settings.disable_sleep", &settings_disable_sleep },
+    [SR_BUTTON_MAPPING] = { RT_ACTION, "settings.button_mapping" },
+    [SR_VERSION] = { RT_INFO, "settings.version" },
 };
 #define SETTINGS_ROW_N ((int)(sizeof(settings_rows) / sizeof(settings_rows[0])))
 static bool otg_roms_available(void);
@@ -3744,6 +3837,8 @@ static int main_tab_active(void) {
 
 /* Only bridge the live browser to Settings at an explicit entry. The
  * scanner and browser still own the live listing and its selection. */
+static bool enhanced_settings_visit;
+static void enhanced_settings_begin(int initial_row);
 static NavModel enhanced_settings_navigation;
 static char enhanced_settings_directory[MAX_PATH_LEN];
 static bool enhanced_settings_recents_fullscreen;
@@ -3753,6 +3848,7 @@ static void switch_main_tab(int target) {
     if (target < MAIN_TAB_RECENTS || target > MAIN_TAB_SETTINGS || target == old)
         return;
     if (target != MAIN_TAB_SETTINGS) {
+        enhanced_settings_visit = false;
         enhanced_settings_navigation.state.screen = NAV_PLATFORM_HOME;
         settings_apps_origin = false;
     }
@@ -3873,8 +3969,10 @@ static void open_enhanced_settings(void) {
     }
     NavEffect effect;
     if (nav_model_handle(navigation, NULL, NAV_INPUT_START, &effect) &&
-        effect == NAV_EFFECT_OPEN_SETTINGS)
+        effect == NAV_EFFECT_OPEN_SETTINGS) {
         switch_main_tab(MAIN_TAB_SETTINGS);
+        enhanced_settings_begin(-1);
+    }
 }
 
 static int visible_entry_named(const char *name) {
@@ -3892,6 +3990,7 @@ static void select_visible_entry(int index) {
 }
 
 static void restore_settings_listing(void) {
+    enhanced_settings_visit = false;
     NavModel *navigation = &enhanced_settings_navigation;
     bool enhanced_return = navigation->state.screen == NAV_SETTINGS;
     if (enhanced_return) {
@@ -4668,8 +4767,145 @@ static void rtc_sync_from_usb(void) {
     ui_toast_show(rtc_apply_time(&value) ? "Time synced from USB" : "Could not set clock");
 }
 
+/* Shared settings operations. Navigation and focus remain in the adapters. */
+static void settings_handle_rtc_editor(bool up, bool down, bool left, bool right) {
+    if (left) settings_rtc_edit_field = (settings_rtc_edit_field + RTC_FIELD_COUNT - 1) % RTC_FIELD_COUNT;
+    if (right) settings_rtc_edit_field = (settings_rtc_edit_field + 1) % RTC_FIELD_COUNT;
+    if (up) rtc_adjust_edit(1);
+    if (down) rtc_adjust_edit(-1);
+    if (input_was_pressed(FROG_BTN_A)) {
+        ui_toast_show(rtc_apply_time(&settings_rtc_edit_time)
+                      ? "Date and time saved" : "Could not set clock");
+        settings_rtc_edit_active = false;
+    } else if (input_was_pressed(FROG_BTN_B)) {
+        settings_rtc_edit_active = false;
+    }
+}
+
+static bool settings_adjust_row(const SRow *r, int delta, bool initial_press) {
+    switch (r->type) {
+    case RT_UI_THEME:
+        ui_theme_select((ui_theme_index() + delta + ui_theme_count()) % ui_theme_count());
+        break;
+    case RT_SETTINGS_LAYOUT:
+        /* This is a two-state presentation choice; use the initial key
+         * edge so a held d-pad cannot toggle straight back. */
+        if (initial_press)
+            frogui_settings_layout_set(settings_layout_keys[(settings_layout + delta + 2) % 2]);
+        break;
+    case RT_FONT:
+        if (font_count > 0)
+            settings_font_idx = (settings_font_idx + delta + font_count) % font_count;
+        break;
+    case RT_WALLPAPER:
+        if (wallpaper_count > 0)
+            settings_wallpaper_idx = (settings_wallpaper_idx + delta + wallpaper_count) % wallpaper_count;
+        break;
+    case RT_WALLFIT:
+        settings_wallpaper_fit = (settings_wallpaper_fit + delta + WALL_FIT_N) % WALL_FIT_N;
+        break;
+    case RT_THEME_PACK:
+        settings_theme_pack_idx = (settings_theme_pack_idx + delta + theme_pack_count) % theme_pack_count;
+        break;
+    case RT_ICON_PACK:
+        settings_icon_pack_idx = (settings_icon_pack_idx + delta + icon_pack_count) % icon_pack_count;
+        break;
+    case RT_ROM_SOURCE:
+        settings_rom_source = (settings_rom_source + delta + ROM_SOURCE_COUNT) % ROM_SOURCE_COUNT;
+        break;
+    case RT_LANGUAGE:
+        settings_language = (settings_language + delta + i18n_language_count()) % i18n_language_count();
+        /* Locale changes need a fresh FrogUI core instance. Reinitializing
+         * libretro from inside retro_run tears down picoarch itself, so
+         * leave a one-shot boot flag and ask the normal launcher loop to
+         * start us again. The new instance loads the saved locale before
+         * scanning or rendering any system labels. */
+        if (!i18n_init(i18n_language_code_at(settings_language))) {
+            settings_language = 0;
+            i18n_init(i18n_language_code_at(settings_language));
+        }
+        settings_save_file();
+        {
+            FILE *flag = fopen(LANGUAGE_RESTART_FLAG, "w");
+            if (flag) fclose(flag);
+        }
+        if (environ_cb)
+            environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, NULL);
+        return true;
+    case RT_TOGGLE:
+        *r->val = (*r->val + delta + 2) % 2;
+        break;
+    case RT_RANGE:
+        *r->val += delta * r->rstep;
+        if (*r->val < r->rmin) *r->val = r->rmin;
+        if (*r->val > r->rmax) *r->val = r->rmax;
+        break;
+    default: break;
+    }
+    settings_preview_row(r);
+    if (r->val == &settings_apps_in_settings)
+        settings_build_vis_rows();
+    return false;
+}
+
+static bool settings_activate_row(const SRow *row) {
+    if (row->type == RT_SETTINGS_LAYOUT) {
+        frogui_settings_layout_set(settings_layout_keys[
+            settings_layout == SETTINGS_LAYOUT_FOLDER
+                ? SETTINGS_LAYOUT_SECTIONS : SETTINGS_LAYOUT_FOLDER]);
+        settings_record_override(row);
+        settings_build_vis_rows();
+        return true;
+    }
+    if (row->type == RT_CACHE_REBUILD) {
+        /* Rebuilding opts in, removes every old/corrupt cache entry, and
+         * immediately regenerates the root library index. System folders are
+         * then refreshed lazily the first time they are opened. */
+        settings_file_cache = 1;
+        cache_clear();
+        settings_save_file();
+        settings_menu_active = false;
+        restore_settings_listing();
+        ui_toast_show("File cache rebuilt");
+        return true;
+    }
+    if (row->type == RT_RTC_TIME) {
+        rtc_begin_edit();
+        ui_toast_show("Left/Right select; Up/Down adjust; A save; B cancel");
+        return true;
+    }
+    if (row->type == RT_RTC_SYNC) {
+        rtc_sync_from_usb();
+        return true;
+    }
+    if (row->type == RT_OPEN_APPS && settings_apps_in_settings) {
+        settings_save_file();
+        settings_apps_origin = true;
+        settings_menu_active = false;
+        scan_apps_tab();
+        return true;
+    }
+    if (row->type == RT_ACTION) {
+        remap_step = 0;
+        remap_prev_raw = input_get_raw_state();
+        remap_wizard_active = true;
+        settings_menu_active = false;
+        dbg("remap: start from settings");
+        return true;
+    }
+    return false;
+}
+
+static void settings_exit_menu(void) {
+    settings_save_file();
+    settings_volume_commit_final();   /* reset the live-commit debounce state */
+    settings_menu_active = false;
+    /* Apply library preferences, then resolve the saved identities again. */
+    resolve_roms_root();
+    restore_settings_listing();
+}
+
 static void handle_settings_menu(void) {
-    extern const int theme_count;
     /* Settings used to use edge-only presses while the browser used the
      * time-based repeat path. Keep both menus equally responsive, including
      * smooth scrolling/adjusting while a direction is held. */
@@ -4679,17 +4915,7 @@ static void handle_settings_menu(void) {
     bool right = input_repeat(FROG_BTN_RIGHT);
 
     if (settings_rtc_edit_active) {
-        if (left) settings_rtc_edit_field = (settings_rtc_edit_field + RTC_FIELD_COUNT - 1) % RTC_FIELD_COUNT;
-        if (right) settings_rtc_edit_field = (settings_rtc_edit_field + 1) % RTC_FIELD_COUNT;
-        if (up) rtc_adjust_edit(1);
-        if (down) rtc_adjust_edit(-1);
-        if (input_was_pressed(FROG_BTN_A)) {
-            ui_toast_show(rtc_apply_time(&settings_rtc_edit_time)
-                          ? "Date and time saved" : "Could not set clock");
-            settings_rtc_edit_active = false;
-        } else if (input_was_pressed(FROG_BTN_B)) {
-            settings_rtc_edit_active = false;
-        }
+        settings_handle_rtc_editor(up, down, left, right);
         return;
     }
 
@@ -4722,68 +4948,9 @@ static void handle_settings_menu(void) {
                 settings_row_selectable(settings_menu_idx))) {
         int delta = right ? 1 : -1;
         const SRow *r = &settings_rows[settings_menu_idx];
-        switch (r->type) {
-        case RT_UI_THEME:
-            ui_theme_select((ui_theme_index() + delta + ui_theme_count()) % ui_theme_count());
-            break;
-        case RT_SETTINGS_LAYOUT:
-            /* This is a two-state presentation choice; use the initial key
-             * edge so a held d-pad cannot toggle straight back. */
-            if (input_was_pressed(right ? FROG_BTN_RIGHT : FROG_BTN_LEFT))
-                frogui_settings_layout_set(settings_layout_keys[(settings_layout + delta + 2) % 2]);
-            break;
-        case RT_FONT:
-            if (font_count > 0)
-                settings_font_idx = (settings_font_idx + delta + font_count) % font_count;
-            break;
-        case RT_WALLPAPER:
-            if (wallpaper_count > 0)
-                settings_wallpaper_idx = (settings_wallpaper_idx + delta + wallpaper_count) % wallpaper_count;
-            break;
-        case RT_WALLFIT:
-            settings_wallpaper_fit = (settings_wallpaper_fit + delta + WALL_FIT_N) % WALL_FIT_N;
-            break;
-        case RT_THEME_PACK:
-            settings_theme_pack_idx = (settings_theme_pack_idx + delta + theme_pack_count) % theme_pack_count;
-            break;
-        case RT_ICON_PACK:
-            settings_icon_pack_idx = (settings_icon_pack_idx + delta + icon_pack_count) % icon_pack_count;
-            break;
-        case RT_ROM_SOURCE:
-            settings_rom_source = (settings_rom_source + delta + ROM_SOURCE_COUNT) % ROM_SOURCE_COUNT;
-            break;
-        case RT_LANGUAGE:
-            settings_language = (settings_language + delta + i18n_language_count()) % i18n_language_count();
-            /* Locale changes need a fresh FrogUI core instance. Reinitializing
-             * libretro from inside retro_run tears down picoarch itself, so
-             * leave a one-shot boot flag and ask the normal launcher loop to
-             * start us again. The new instance loads the saved locale before
-             * scanning or rendering any system labels. */
-            if (!i18n_init(i18n_language_code_at(settings_language))) {
-                settings_language = 0;
-                i18n_init(i18n_language_code_at(settings_language));
-            }
-            settings_save_file();
-            {
-                FILE *flag = fopen(LANGUAGE_RESTART_FLAG, "w");
-                if (flag) fclose(flag);
-            }
-            if (environ_cb)
-                environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, NULL);
+        if (settings_adjust_row(r, delta,
+                                input_was_pressed(right ? FROG_BTN_RIGHT : FROG_BTN_LEFT)))
             return;
-        case RT_TOGGLE:
-            *r->val = (*r->val + delta + 2) % 2;
-            break;
-        case RT_RANGE:
-            *r->val += delta * r->rstep;
-            if (*r->val < r->rmin) *r->val = r->rmin;
-            if (*r->val > r->rmax) *r->val = r->rmax;
-            break;
-        default: break;
-        }
-        settings_preview_row(r);
-        if (r->val == &settings_apps_in_settings)
-            settings_build_vis_rows();
     }
     if (input_was_pressed(FROG_BTN_A) && sec >= 0 && settings_layout != SETTINGS_LAYOUT_FOLDER) {
         /* A on a header flips its section (same as LEFT) and stays in the
@@ -4807,54 +4974,8 @@ static void handle_settings_menu(void) {
         return;
 
     if (input_was_pressed(FROG_BTN_A) &&
-        settings_rows[settings_menu_idx].type == RT_SETTINGS_LAYOUT) {
-        frogui_settings_layout_set(settings_layout_keys[
-            settings_layout == SETTINGS_LAYOUT_FOLDER
-                ? SETTINGS_LAYOUT_SECTIONS : SETTINGS_LAYOUT_FOLDER]);
-        settings_record_override(&settings_rows[settings_menu_idx]);
-        settings_build_vis_rows();
+        settings_activate_row(&settings_rows[settings_menu_idx]))
         return;
-    }
-    if (input_was_pressed(FROG_BTN_A) &&
-        settings_rows[settings_menu_idx].type == RT_CACHE_REBUILD) {
-        /* Rebuilding opts in, removes every old/corrupt cache entry, and
-         * immediately regenerates the root library index. System folders are
-         * then refreshed lazily the first time they are opened. */
-        settings_file_cache = 1;
-        cache_clear();
-        settings_save_file();
-        settings_menu_active = false;
-        restore_settings_listing();
-        ui_toast_show("File cache rebuilt");
-        return;
-    }
-    if (input_was_pressed(FROG_BTN_A) &&
-        settings_rows[settings_menu_idx].type == RT_RTC_TIME) {
-        rtc_begin_edit();
-        ui_toast_show("Left/Right select; Up/Down adjust; A save; B cancel");
-        return;
-    }
-    if (input_was_pressed(FROG_BTN_A) &&
-        settings_rows[settings_menu_idx].type == RT_RTC_SYNC) {
-        rtc_sync_from_usb();
-        return;
-    }
-    if (input_was_pressed(FROG_BTN_A) &&
-        settings_rows[settings_menu_idx].type == RT_OPEN_APPS && settings_apps_in_settings) {
-        settings_save_file();
-        settings_apps_origin = true;
-        settings_menu_active = false;
-        scan_apps_tab();
-        return;
-    }
-    if (input_was_pressed(FROG_BTN_A) && settings_rows[settings_menu_idx].type == RT_ACTION) {
-        remap_step = 0;
-        remap_prev_raw = input_get_raw_state();
-        remap_wizard_active = true;
-        settings_menu_active = false;
-        dbg("remap: start from settings");
-        return;
-    }
     if (settings_layout == SETTINGS_LAYOUT_FOLDER && settings_folder_section >= 0 &&
         input_was_pressed(FROG_BTN_B)) {
         settings_folder_section = -1;
@@ -4864,14 +4985,11 @@ static void handle_settings_menu(void) {
     }
     if ((input_was_pressed(FROG_BTN_A) && settings_rows[settings_menu_idx].type != RT_ACTION) ||
          input_was_pressed(FROG_BTN_B)) {
-        settings_save_file();
-        settings_volume_commit_final();   /* reset the live-commit debounce state */
-        settings_menu_active = false;
-        /* Apply library preferences, then resolve the saved identities again. */
-        resolve_roms_root();
-        restore_settings_listing();
+        settings_exit_menu();
     }
 }
+
+#include "enhanced_settings.h"
 
 static bool horizontal_system_view(void) {
     return !settings_graphical_home && settings_explore_layout == STYLE_HORIZONTAL &&
@@ -6371,6 +6489,10 @@ static void fit_enhanced_title(char *output, size_t capacity, const char *name,
             high = middle;
         }
     }
+    if (capacity > 3 && keep >= capacity - 3) {
+        keep = capacity - 4;
+        while (keep && ((unsigned char)name[keep] & 0xc0) == 0x80) keep--;
+    }
     snprintf(output, capacity, "%.*s...", (int)keep, name);
 }
 
@@ -7239,6 +7361,12 @@ static void handle_input(void) {
         return;
     }
 
+    if (enhanced_settings_active()) {
+        l1_tab_pending = false;
+        handle_enhanced_settings_menu();
+        return;
+    }
+
     /* Shoulder tab switching is part of FrogUI's built-in themes, not imported
      * MuOS carousel schemes. */
     {
@@ -8048,6 +8176,7 @@ void retro_init(void) {
     ui_sounds_ready = false;
     ui_sound_next_ms = 0;
     enhanced_home_kind = ENHANCED_HOME_PLATFORM;
+    enhanced_settings_visit = false;
     settings_apps_origin = false;
     viewing_info = false;
     input_log_start();
@@ -8100,6 +8229,11 @@ void retro_init(void) {
                 break;
             }
         settings_build_vis_rows();
+        if (settings_graphical_home) {
+            nav_model_init(&enhanced_settings_navigation, true);
+            nav_model_handle(&enhanced_settings_navigation, NULL, NAV_INPUT_START, NULL);
+            enhanced_settings_begin(SR_LANGUAGE);
+        }
     }
     /* Sync cubevol's stored backlight before checking the daemon. If it had
      * genuinely died, the replacement reads the right value immediately. */
@@ -8351,6 +8485,29 @@ static void render_settings_menu(void) {
     render_scroll_indicator(framebuffer, settings_vis_n, cur, list_visible);
     render_legend(framebuffer, LEGEND_X_NONE, 0, 0);
 }
+
+static SystemIcon *enhanced_settings_icons[ENHANCED_SETTINGS_CATEGORY_COUNT];
+
+static void prepare_enhanced_settings_icons(bool theme_changed) {
+    static bool prepared;
+    if (!enhanced_settings_active()) {
+        prepared = false;
+        return;
+    }
+    if (prepared && !theme_changed) return;
+    prepared = true;
+    memset(enhanced_settings_icons, 0, sizeof enhanced_settings_icons);
+    if (!enhanced_theme) return;
+    for (int i = 0; i < ENHANCED_SETTINGS_CATEGORY_COUNT; i++) {
+        char id[THEME_RESOURCE_ID_MAX];
+        snprintf(id, sizeof id, "settings.%s.icon", enhanced_settings_categories[i].key);
+        ThemeResourceDescriptor resource;
+        if (theme_resource_resolve(enhanced_theme, id, &resource))
+            enhanced_settings_icons[i] = system_icon_load(resource.path, &resource);
+    }
+}
+
+#include "enhanced_settings_render.h"
 
 static void render_remap_wizard(void) {
     if (banner_is_loaded())
@@ -8671,6 +8828,7 @@ void retro_run(void) {
     bool enhanced_theme_changed = enhanced_theme_sync();
     if (enhanced_theme_changed) load_ra_trophy();
     prepare_enhanced_grid();
+    prepare_enhanced_settings_icons(enhanced_theme_changed);
     prepare_enhanced_library(enhanced_theme_changed);
     prepare_details_metrics();
     prepare_details_achievements(SDCARD_BASE);
@@ -8930,6 +9088,14 @@ void retro_run(void) {
         sig = sig*33u + (unsigned)port_error_active;
         sig = sig*33u + (unsigned)settings_menu_active;
         if (settings_menu_active) {
+            if (enhanced_settings_active()) {
+                sig = sig*33u + (unsigned)enhanced_settings_category;
+                sig = sig*33u + (unsigned)enhanced_settings_options_focused();
+                sig = sig*33u + (unsigned)enhanced_settings_row_cursor();
+                sig = sig*33u + enhanced_settings_dependencies;
+                sig = sig*33u + (unsigned)enhanced_settings_selector_active;
+                sig = sig*33u + (unsigned)enhanced_settings_selector_cursor;
+            }
             sig = sig*33u + (unsigned)settings_menu_idx;
             sig = sig*33u + (unsigned)(time(NULL) / 60);
             sig = sig*33u + (unsigned)settings_rtc_edit_active;
@@ -9015,6 +9181,8 @@ void retro_run(void) {
         render_remap_wizard();
     } else if (viewing_info) {
         render_switch_info(framebuffer);
+    } else if (enhanced_settings_active()) {
+        render_enhanced_settings_menu();
     } else if (settings_menu_active) {
         render_settings_menu();
     } else if (viewing_recents && settings_game_switcher) {

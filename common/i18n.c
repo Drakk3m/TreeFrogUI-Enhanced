@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define I18N_MAX_FILE 32768
-#define I18N_MAX_ENTRIES 320
+#define I18N_MAX_ENTRIES 352 /* Covers the 333-entry P7 English pack. */
 #define I18N_KEY_MAX 80
 #define I18N_MAX_LANGUAGES 32
 #define I18N_LANGUAGE_MAX 16

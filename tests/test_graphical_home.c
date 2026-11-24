@@ -191,6 +191,245 @@ static void write_cover_bmp(const char *path, unsigned width, unsigned height) {
     assert(fclose(file) == 0);
 }
 
+static void test_settings_mapping_contract(void) {
+    /* The settings table deliberately has 48 rows: six section headers and
+     * exactly 42 mapped controls. This catches accidental loss or reordering
+     * when a control is added to the Enhanced settings projection. */
+    static const char *const expected[] = {
+        "settings.appearance", "UI theme", "settings.background_theme_pack", "Settings style",
+        "Enhanced graphical platform home", "Decorative pills", "settings.icon_pack",
+        "settings.center_text", "settings.friendly_system_names", "settings.font", "settings.font_size",
+        "settings.battery_colour_mode", "settings.stock_battery_indicator", "settings.background_images",
+        "settings.background_dim", "settings.wallpaper", "settings.background_image_fit", "settings.general",
+        "settings.language", "settings.brightness", "settings.animations", "settings.menu_sounds",
+        "settings.ui_sounds", "settings.hide_extensions", "settings.hide_empty_folders", "settings.library",
+        "Apps in Settings", "Open Apps", "settings.rom_source", "settings.otg_storage", "settings.game_switcher",
+        "Rounded recents screenshots", "settings.start_in_recents", "settings.gameplay", "settings.quick_resume",
+        "settings.autosave_autoload", "settings.custom_aspect_ratios", "settings.rtc_emulation", "settings.rtc_time",
+        "settings.rtc_sync_usb", "settings.rtc_bump", "settings.system", "settings.volume", "settings.file_cache",
+        "settings.rebuild_file_cache", "settings.disable_sleep", "settings.button_mapping", "settings.version"
+    };
+    assert(SETTINGS_ROW_N == (int)(sizeof expected / sizeof expected[0]));
+    for (int section = 0; section < SETTINGS_SECTION_N; section++)
+        settings_section_open[section] = true;
+    settings_layout = SETTINGS_LAYOUT_SECTIONS;
+    settings_build_vis_rows();
+    int mapped = 0;
+    for (int i = 0; i < SETTINGS_ROW_N; i++) {
+        assert(settings_rows[i].label && strcmp(settings_rows[i].label, expected[i]) == 0);
+        if (settings_rows[i].type != RT_HEADER) {
+            mapped++;
+            assert(settings_rows[i].label[0]);
+            assert(settings_row_visible(i));
+        }
+    }
+    assert(mapped == 42);
+
+    /* Dependent controls remain represented but become unavailable. */
+    settings_render_scheme_idx = 0;
+    settings_backgrounds = 0;
+    assert(!settings_row_enabled(&settings_rows[2]));
+    settings_backgrounds = 1;
+    assert(settings_row_enabled(&settings_rows[2]));
+    settings_render_scheme_idx = 1;
+    assert(!settings_row_enabled(&settings_rows[2]));
+    settings_render_scheme_idx = 0;
+    settings_style = STYLE_SYSTEM;
+    assert(settings_row_enabled(&settings_rows[6]));
+    settings_style = STYLE_VERTICAL;
+    assert(!settings_row_enabled(&settings_rows[6]));
+    settings_style = STYLE_SYSTEM;
+    puts("PASS 42 settings mappings, labels, visibility and dependent enablement");
+}
+
+static void test_classic_and_enhanced_navigation_contract(void) {
+    NavModel model;
+    NavEffect effect = NAV_EFFECT_NONE;
+    nav_model_init(&model, false);
+    assert(nav_model_set_platform(&model, NULL, "NES"));
+    assert(!nav_model_handle(&model, NULL, NAV_INPUT_CONFIRM, &effect));
+    assert(model.state.screen == NAV_PLATFORM_HOME);
+    nav_model_init(&model, true);
+    assert(nav_model_set_platform(&model, NULL, "NES"));
+    assert(nav_model_handle(&model, NULL, NAV_INPUT_CONFIRM, &effect));
+    assert(effect == NAV_EFFECT_OPEN_LIBRARY && model.state.screen == NAV_GAME_LIBRARY);
+    assert(nav_model_handle(&model, NULL, NAV_INPUT_BACK, &effect));
+    assert(effect == NAV_EFFECT_RETURN_TO_HOME && model.state.screen == NAV_PLATFORM_HOME);
+    puts("PASS Classic disabled and Enhanced navigation routing contract");
+}
+
+static void select_enhanced_setting(int row) {
+    int target = -1;
+    for (int i = 0; i < ENHANCED_SETTINGS_CATEGORY_COUNT; i++)
+        if (enhanced_settings_row_in_category(row, i)) target = i;
+    assert(target >= 0);
+    if (enhanced_settings_options_focused()) press(FROG_BTN_B);
+    while (enhanced_settings_category < target) press(FROG_BTN_DOWN);
+    while (enhanced_settings_category > target) press(FROG_BTN_UP);
+    press(FROG_BTN_A);
+    assert(enhanced_settings_options_focused());
+    int position = 0;
+    while (position < enhanced_settings_row_count() && enhanced_settings_row_at(position) != row)
+        position++;
+    assert(position < enhanced_settings_row_count());
+    while (enhanced_settings_row_cursor() < position) press(FROG_BTN_DOWN);
+    while (enhanced_settings_row_cursor() > position) press(FROG_BTN_UP);
+}
+
+static unsigned settings_shutdown_requests;
+
+static bool capture_settings_environment(unsigned command, void *data) {
+    (void)data;
+    if (command == RETRO_ENVIRONMENT_SHUTDOWN) settings_shutdown_requests++;
+    return false;
+}
+
+static void test_enhanced_settings_integration(void) {
+    for (int i = 0; i < SETTINGS_ROW_N; i++) {
+        int mapped = 0;
+        for (int j = 0; j < ENHANCED_SETTINGS_CATEGORY_COUNT; j++)
+            mapped += enhanced_settings_row_in_category(i, j);
+        assert(mapped == (settings_rows[i].type != RT_HEADER));
+    }
+    /* Exercise the original adapter with the shared operations in place. */
+    settings_graphical_home = 0;
+    settings_layout = SETTINGS_LAYOUT_SECTIONS;
+    settings_section_open[1] = true;
+    settings_brightness = 75;
+    settings_menu_active = true;
+    settings_menu_idx = SR_BRIGHTNESS;
+    handle_settings_menu();
+    press(FROG_BTN_RIGHT);
+    assert(settings_menu_active && settings_brightness == 80);
+    press(FROG_BTN_A);
+    assert(!settings_menu_active);
+    settings_brightness = 75;
+    settings_load_file();
+    assert(settings_brightness == 80);
+
+    strcpy(current_path, ROMS_PATH);
+    scan_directory(current_path);
+    settings_graphical_home = 1;
+    settings_render_scheme_idx = 0;
+    settings_style = STYLE_VERTICAL;
+    settings_apps_in_settings = 0;
+    int previous_apps = settings_apps_in_settings;
+    open_enhanced_settings();
+    assert(enhanced_settings_active() && enhanced_settings_category == 0);
+    press(FROG_BTN_UP);
+    assert(enhanced_settings_category == 0);
+    press(FROG_BTN_R1);
+    assert(enhanced_settings_active());
+
+    select_enhanced_setting(SR_UI_THEME);
+    int previous_theme = ui_theme_index();
+    press(FROG_BTN_A);
+    assert(enhanced_settings_selector_active);
+    press(FROG_BTN_DOWN);
+    assert(ui_theme_index() == previous_theme);
+    press(FROG_BTN_B);
+    assert(!enhanced_settings_selector_active && ui_theme_index() == previous_theme);
+    int selection = enhanced_settings_row_cursor();
+    press(FROG_BTN_B);
+    press(FROG_BTN_A);
+    assert(enhanced_settings_row_cursor() == selection);
+
+    press(FROG_BTN_A);
+    press(FROG_BTN_DOWN);
+    press(FROG_BTN_A);
+    assert(ui_theme_index() != previous_theme && enhanced_settings_active());
+    press(FROG_BTN_A);
+    press(FROG_BTN_UP);
+    press(FROG_BTN_A);
+    assert(ui_theme_index() == previous_theme);
+
+    select_enhanced_setting(SR_ICON_PACK);
+    assert(enhanced_settings_row_disabled(SR_ICON_PACK));
+    press(FROG_BTN_A);
+    assert(!enhanced_settings_selector_active);
+    select_enhanced_setting(SR_UI_SOUNDS);
+    assert(enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_UI_SOUNDS);
+    for (int i = 0; i < enhanced_settings_row_count(); i++)
+        assert(enhanced_settings_row_at(i) != SR_MENU_SOUNDS);
+    select_enhanced_setting(SR_VERSION);
+    press(FROG_BTN_A);
+    assert(enhanced_settings_options_focused() && !enhanced_settings_selector_active);
+
+    select_enhanced_setting(SR_RTC_TIME);
+    press(FROG_BTN_A);
+    assert(settings_rtc_edit_active);
+    press(FROG_BTN_RIGHT);
+    assert(settings_rtc_edit_field == RTC_MONTH);
+    press(FROG_BTN_B);
+    assert(!settings_rtc_edit_active && enhanced_settings_options_focused());
+
+    select_enhanced_setting(SR_ROM_SOURCE);
+    enhanced_settings_otg = false;
+    enhanced_settings_refresh();
+    int previous_source = settings_rom_source;
+    press(FROG_BTN_RIGHT);
+    press(FROG_BTN_A);
+    assert(settings_rom_source == previous_source && !enhanced_settings_selector_active);
+
+    select_enhanced_setting(SR_BUTTON_MAPPING);
+    press(FROG_BTN_A);
+    assert(remap_wizard_active && !settings_menu_active && remap_step == 0);
+    int count_buttons = remap_wizard_count();
+    for (int i = 0; i < count_buttons; i++) press(FROG_BTN_B);
+    assert(!remap_wizard_active && enhanced_settings_active());
+    assert(enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_BUTTON_MAPPING);
+
+    select_enhanced_setting(SR_LANGUAGE);
+    assert(i18n_scan_languages() > 1);
+    settings_language = 0;
+    environ_cb = capture_settings_environment;
+    press(FROG_BTN_A);
+    press(FROG_BTN_DOWN);
+    assert(settings_language == 0 && !settings_shutdown_requests);
+    press(FROG_BTN_A);
+    assert(settings_language == 1 && settings_shutdown_requests == 1);
+    environ_cb = NULL;
+    settings_language = 0;
+    assert(i18n_init("en_US"));
+
+    render_set_geometry(640, 480, 100);
+    assert(!framebuffer);
+    framebuffer = calloc(640 * 480, sizeof *framebuffer);
+    assert(framebuffer);
+    memset(enhanced_settings_icons, 0, sizeof enhanced_settings_icons);
+    for (int i = 0; i < ENHANCED_SETTINGS_CATEGORY_COUNT; i++) {
+        select_enhanced_setting(enhanced_settings_categories[i].rows[0]);
+        render_enhanced_settings_menu();
+    }
+    settings_panel_category_text("Long localized category title with more than two words",
+                                 16, 64, 184, 42, COLOR_TEXT);
+    settings_panel_text("An extremely long localized option value with many words",
+                        560, 120, 64, 38, COLOR_TEXT);
+    free(framebuffer);
+    framebuffer = NULL;
+
+    select_enhanced_setting(SR_APPS_IN_SETTINGS);
+    int count = enhanced_settings_row_count();
+    press(FROG_BTN_A);
+    assert(settings_apps_in_settings != previous_apps);
+    assert(enhanced_settings_row_count() == count + 1);
+    select_enhanced_setting(SR_OPEN_APPS);
+    press(FROG_BTN_A);
+    assert(settings_apps_origin && viewing_apps && !settings_menu_active);
+    press(FROG_BTN_B);
+    assert(enhanced_settings_active() &&
+           enhanced_settings_row_at(enhanced_settings_row_cursor()) == SR_OPEN_APPS);
+
+    select_enhanced_setting(SR_GRAPHICAL_HOME);
+    press(FROG_BTN_A);
+    assert(!settings_graphical_home && enhanced_settings_active());
+    press(FROG_BTN_B);
+    assert(enhanced_settings_active() && !enhanced_settings_options_focused());
+    press(FROG_BTN_B);
+    assert(!settings_menu_active && !enhanced_settings_visit);
+    puts("PASS Classic preview and persistence, Enhanced settings focus, selectors, RTC, Apps and mode exit");
+}
+
 static void test_bounded_artwork(const char *root) {
     char folder[MAX_PATH_LEN], path[MAX_PATH_LEN], rom[MAX_PATH_LEN];
     assert(snprintf(folder, sizeof folder, "%s/AFirst/.res", root) < (int)sizeof folder);
@@ -555,11 +794,7 @@ static void test_ribbon(const char *root) {
     assert(snprintf(path, sizeof path, "%s/RibbonEmpty", root) < (int)sizeof path);
     assert(mkdir(path, 0700) == 0);
     settings_hide_empty = 0;
-    for (int i = 0; i < SETTINGS_ROW_N; i++) {
-        if (!strcmp(settings_rows[i].label, "settings.system"))
-            settings_section_open[settings_section_of(i)] = true;
-        if (settings_rows[i].type == RT_CACHE_REBUILD) settings_menu_idx = i;
-    }
+    select_enhanced_setting(SR_REBUILD_CACHE);
     press(FROG_BTN_A);
     assert(!settings_menu_active && entry_count == stored_count + 1);
     prepare_enhanced_grid();
@@ -1296,6 +1531,8 @@ int main(int argc, char **argv) {
     scan_directory(ROMS_PATH);
     assert(entry_count == 3);
     test_bounded_artwork(argv[1]);
+    test_settings_mapping_contract();
+    test_classic_and_enhanced_navigation_contract();
     test_enhanced_art(argv[1]);
     test_ui_sounds(argv[1]);
     test_ribbon(argv[1]);
@@ -1303,5 +1540,6 @@ int main(int argc, char **argv) {
     test_home_ribbon_presentation();
     test_platform_filelists(argv[1]);
     test_ra_home(argv[1]);
+    test_enhanced_settings_integration();
     return 0;
 }
