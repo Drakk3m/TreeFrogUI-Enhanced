@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "namespace": "r36sx-lab",
+  "console": "NES",
+  "sha256": "d3e2e7b3f200dddd483904b91caa0baaa2970a3e413614cd4df9cfb9098b54ac",
+  "ra_content_hash": "19f8359d5ba99f87f0400f680f5d9ba2",
+  "local_only": true,
+  "achievements": [
+    {
+      "id": "r36sx-lab:1",
+      "title": "First Coin",
+      "description": "Collect your first coin.",
+      "points": 1,
+      "badge": "badges/lab-1.png"
+    },
+    {
+      "id": "r36sx-lab:2",
+      "title": "Coin Collector",
+      "description": "Collect ten coins.",
+      "points": 5,
+      "badge": "badges/lab-2.png"
+    },
+    {
+      "id": "r36sx-lab:3",
+      "title": "Next Chapter",
+      "description": "Advance from level one to level two.",
+      "points": 5,
+      "badge": "badges/lab-3.png"
+    },
+    {
+      "id": "r36sx-lab:4",
+      "title": "Monster Hunter",
+      "description": "Defeat five enemies.",
+      "points": 5,
+      "badge": "badges/lab-4.png"
+    },
+    {
+      "id": "r36sx-lab:5",
+      "title": "Untouchable",
+      "description": "Defeat three enemies without damage.",
+      "points": 10,
+      "badge": "badges/lab-5.png"
+    },
+    {
+      "id": "r36sx-lab:6",
+      "title": "Laboratory Master",
+      "description": "Reach level three with at least twenty coins and full health.",
+      "points": 10,
+      "badge": "badges/lab-6.png"
+    }
+  ]
+}
