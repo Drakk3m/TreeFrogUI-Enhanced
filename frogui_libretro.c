@@ -7318,6 +7318,8 @@ static void render_details_information(uint16_t *fb, int index, int y) {
     }
 }
 
+#include "ra_lab_gallery.h"
+
 static RaGame details_achievements;
 static bool details_achievements_valid;
 static size_t details_achievement_index;
@@ -7360,7 +7362,7 @@ static void prepare_details_achievements(const char *sd_root) {
     int previous = details_achievements_valid
                  ? details_achievements.achievements[details_achievement_index].id : 0;
     details_achievement_index = 0;
-    details_achievements_valid = false;
+    details_achievements_local = details_achievements_valid = false;
     if (selected_index >= 0 && selected_index < entry_count && !entries[selected_index].is_dir) {
         char path[sizeof current_path + sizeof entries[0].name];
         if (selected_game_path(selected_index, path, sizeof path)) {
@@ -7369,7 +7371,10 @@ static void prepare_details_achievements(const char *sd_root) {
             char platform[64];
             const char *platform_id = enhanced_settings_navigation.state.platform_id;
             if (collection_platform(platform, sizeof platform, path)) platform_id = platform;
-            details_achievements_valid = ra_game_read(sd_root, path, platform_id, &details_achievements);
+            details_achievements_local = load_ra_lab_gallery(sd_root, path, platform_id,
+                                                               &details_achievements);
+            details_achievements_valid = details_achievements_local ||
+                ra_game_read(sd_root, path, platform_id, &details_achievements);
             if (same_game && previous && details_achievements_valid) {
                 for (size_t i = 0; i < details_achievements.achievement_count; i++) {
                     if (details_achievements.achievements[i].id == previous) {
@@ -7418,8 +7423,13 @@ static void prepare_details_badge(void) {
     static const char safe[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
     size_t length = strlen(badge);
     if (length && length <= 60 && strspn(badge, safe) == length) {
-        char path[sizeof RA_SD_DIRECTORY + 80];
-        snprintf(path, sizeof path, "%s/badges/%s.png", RA_SD_DIRECTORY, badge);
+        char path[sizeof ra_lab_root + 80];
+        if (details_achievements_local)
+            snprintf(path, sizeof path, "%s" RA_LAB_RELATIVE "/badges/lab-%zu%s.png",
+                     ra_lab_root, details_achievement_index + 1,
+                     (ra_lab_progress & (1u << details_achievement_index)) ? "" : "-locked");
+        else
+            snprintf(path, sizeof path, "%s/badges/%s.png", RA_SD_DIRECTORY, badge);
         load_bounded_png_thumbnail(path, &details_badge);
     }
 
@@ -7437,7 +7447,8 @@ static void render_details_header(uint16_t *fb, const char *title) {
 }
 
 static void render_enhanced_achievements(uint16_t *fb) {
-    render_details_header(fb, tr_or("enhanced.details.achievement_title", "RetroAchievements"));
+    render_details_header(fb, details_achievements_local ? "Local Achievements"
+                      : tr_or("enhanced.details.achievement_title", "RetroAchievements"));
     if (!details_achievements_valid || details_achievement_index >= details_achievements.achievement_count)
         return;
     const RaGameAchievement *achievement = &details_achievements.achievements[details_achievement_index];
@@ -7460,7 +7471,19 @@ static void render_enhanced_achievements(uint16_t *fb) {
     y += step;
     render_details_text(fb, achievement->title, label_x, y, label_width, step, COLOR_TEXT);
     y += step;
-    snprintf(label, sizeof label, "%s: %d", tr_or("enhanced.details.ra_game_id", "RA game ID"), details_achievements.game_id);
+    if (details_achievements_local) {
+        unsigned count = 0, points = 0;
+        for (size_t i = 0; i < details_achievements.achievement_count; i++)
+            if (ra_lab_progress & (1u << i)) {
+                count++;
+                points += (unsigned)details_achievements.achievements[i].points;
+            }
+        snprintf(label, sizeof label, "%s  |  %u/6 unlocked, %u/36 pts",
+                 ra_lab_progress & (1u << details_achievement_index) ? "Local" : "Locked",
+                 count, points);
+    } else
+        snprintf(label, sizeof label, "%s: %d", tr_or("enhanced.details.ra_game_id", "RA game ID"),
+                 details_achievements.game_id);
     render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
     y += step;
     snprintf(label, sizeof label, "%s: %d",
@@ -7530,7 +7553,8 @@ static void render_enhanced_game_details(uint16_t *fb) {
     if (details_playable_neighbor(selected_index, 1) >= 0)
         render_details_chevron(fb, SCREEN_WIDTH - UI_S(14), 1);
     if (details_achievements_valid) {
-        const char *gallery = tr_or("enhanced.details.achievements_hint", "L2  Achievements");
+        const char *gallery = details_achievements_local ? "L2  Local Achievements"
+                           : tr_or("enhanced.details.achievements_hint", "L2  Achievements");
         int glyph = UI_S(22);
         int label = SCREEN_WIDTH - UI_S(24) - font_measure_text(gallery);
         int footer = SCREEN_HEIGHT - ITEM_HEIGHT - font_get_size() - UI_S(14);
