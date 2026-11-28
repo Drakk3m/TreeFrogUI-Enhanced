@@ -1,0 +1,11 @@
+# ROM Studio handoff for the local RA laboratory
+
+The local artifacts live inside cubegm/enhanced/ra/local/r36sx-lab. The public RA-02.1 metadata stays independent. The contract covered here is the tested local-only implementation, with no credentials, official synchronization or changes to ROM Studio.
+
+lab.def has ten LF-separated ASCII lines: R36SX-LAB-DEF 1, r36sx-lab, NES, the exact ROM SHA-256, then six executable condition strings in achievement order. The runtime whitelists the two exact ROMs and the six condition strings. A public definition_fingerprint_md5 never provides executable source. The metadata example associates the original NES fixture with its whole-file SHA-256 and NES content MD5. Local IDs r36sx-lab:1 through r36sx-lab:6 refer to the six rows. Names and assets do not determine identity.
+
+progress.v1 contains exactly seven lines. The values are R36SX-LAB-PROGRESS 1, local-player, r36sx-lab, NES, the ROM SHA-256, definition revision 1 and a two-digit mask. Least-significant bit maps to the first achievement and upper bits beyond six are invalid. The readable variant uses progress-readable.v1 for new writes and also reads the same-identity legacy snapshot from progress.v1. When both readable snapshots match, it ORs their bits. The original variant reads progress.v1 only. No timestamp, official account ID, server receipt or submission flag is serialized.
+
+The example mask 00 contains no unlocked achievements. Mask 3f is a real, sanitized host fixture produced through FCEUmm/rcheevos and contains all six locally unlocked achievements. The stable deduplication identity is (profile, namespace, console, exact ROM SHA-256, definition revision, achievement ID). Treat a set bit as runtime-verified **locally**. Import idempotently within that tuple. Keep profiles and ROM variants distinct. Reject unsupported versions and ignore orphaned temporary files. A missing or malformed snapshot cannot establish a verified unlock.
+
+The test profile literal local-player is unrelated to the official username displayed on Home. A copied snapshot does not carry a cryptographic signature or official eligibility. The local format is unsuitable for server submission. Store or export it only as local diagnostic progress.

@@ -6325,9 +6325,11 @@ static void enhanced_home_utility_icon(uint16_t *fb, enum EnhancedHomeItemKind k
 }
 
 #define RA_SD_DIRECTORY SDCARD_BASE "/cubegm/enhanced/ra"
-enum { RA_AVATAR_EDGE = 40, RA_TROPHY_EDGE = 28 };
+enum { RA_AVATAR_EDGE = 64, RA_TROPHY_EDGE = 28 };
 static RaProfile ra_home_profile;
 static bool ra_home_profile_valid;
+static int ra_home_lab_count = -1;
+static int read_ra_lab_home_count(void);
 static uint16_t ra_avatar_pixels[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
 static uint8_t ra_avatar_alpha[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
 static SystemIcon ra_avatar_icon;
@@ -6369,6 +6371,7 @@ static void load_ra_trophy(void) {
 }
 
 static void load_ra_home(const char *directory) {
+    ra_home_lab_count = read_ra_lab_home_count();
     ra_home_profile_valid = ra_profile_read(directory, &ra_home_profile);
     ra_avatar_icon = (SystemIcon){0};
     if (!ra_home_profile_valid) return;
@@ -6403,22 +6406,25 @@ static void render_ra_trophy(uint16_t *fb, int x, int y, int size) {
 }
 
 static void render_ra_home(uint16_t *fb) {
-    if (!ra_home_profile_valid) return;
-    int icon = UI_S(34), gap = UI_S(8), trophy = UI_S(24);
+    if (!ra_home_profile_valid && ra_home_lab_count < 0) return;
+    int icon = UI_S(50), gap = UI_S(8), trophy = UI_S(24);
     int y = UI_S(39), right = SCREEN_WIDTH - UI_S(24);
-    int text = font_measure_text(ra_home_profile.username);
+    int text = ra_home_profile_valid ? font_measure_text(ra_home_profile.username) : 0;
     int max_text = SCREEN_WIDTH / 3;
     if (text > max_text) text = max_text;
-    const char *pending_count = "0";
-    int count_width = font_measure_text(pending_count);
+    char count[32];
+    if (ra_home_lab_count >= 0) snprintf(count, sizeof count, "%d", ra_home_lab_count);
+    else strcpy(count, "0");
+    int count_width = font_measure_text(count);
     int left_width = gap + trophy + gap + count_width + gap;
     int right_width = gap + icon + gap + text + gap;
     int right_left = right - right_width;
 
     render_rounded_rect_alpha(fb, UI_S(24), y, left_width, icon + gap,
                               gap, COLOR_BG, 216);
-    render_rounded_rect_alpha(fb, right_left, y, right_width, icon + gap,
-                              gap, COLOR_BG, 216);
+    if (ra_home_profile_valid)
+        render_rounded_rect_alpha(fb, right_left, y, right_width, icon + gap,
+                                  gap, COLOR_BG, 216);
 
     int cup = UI_S(24) + gap;
     int top = y + (icon + gap - trophy) / 2;
@@ -6426,7 +6432,8 @@ static void render_ra_home(uint16_t *fb) {
     int count_x = cup + trophy + gap;
     int ty = y + (icon + gap - font_get_size()) / 2;
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, count_x, ty,
-                   pending_count, COLOR_DISABLED);
+                   count, ra_home_lab_count >= 0 ? COLOR_TEXT : COLOR_DISABLED);
+    if (!ra_home_profile_valid) return;
 
     int ax = right_left + gap, ay = y + gap / 2;
     if (ra_avatar_icon.pixels) {
@@ -7318,6 +7325,8 @@ static void render_details_information(uint16_t *fb, int index, int y) {
     }
 }
 
+#include "ra_lab_gallery.h"
+
 static RaGame details_achievements;
 static bool details_achievements_valid;
 static size_t details_achievement_index;
@@ -7360,7 +7369,7 @@ static void prepare_details_achievements(const char *sd_root) {
     int previous = details_achievements_valid
                  ? details_achievements.achievements[details_achievement_index].id : 0;
     details_achievement_index = 0;
-    details_achievements_valid = false;
+    details_achievements_local = details_achievements_valid = false;
     if (selected_index >= 0 && selected_index < entry_count && !entries[selected_index].is_dir) {
         char path[sizeof current_path + sizeof entries[0].name];
         if (selected_game_path(selected_index, path, sizeof path)) {
@@ -7369,7 +7378,10 @@ static void prepare_details_achievements(const char *sd_root) {
             char platform[64];
             const char *platform_id = enhanced_settings_navigation.state.platform_id;
             if (collection_platform(platform, sizeof platform, path)) platform_id = platform;
-            details_achievements_valid = ra_game_read(sd_root, path, platform_id, &details_achievements);
+            details_achievements_local = load_ra_lab_gallery(sd_root, path, platform_id,
+                                                               &details_achievements);
+            details_achievements_valid = details_achievements_local ||
+                ra_game_read(sd_root, path, platform_id, &details_achievements);
             if (same_game && previous && details_achievements_valid) {
                 for (size_t i = 0; i < details_achievements.achievement_count; i++) {
                     if (details_achievements.achievements[i].id == previous) {
@@ -7418,8 +7430,13 @@ static void prepare_details_badge(void) {
     static const char safe[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
     size_t length = strlen(badge);
     if (length && length <= 60 && strspn(badge, safe) == length) {
-        char path[sizeof RA_SD_DIRECTORY + 80];
-        snprintf(path, sizeof path, "%s/badges/%s.png", RA_SD_DIRECTORY, badge);
+        char path[sizeof ra_lab_root + 80];
+        if (details_achievements_local)
+            snprintf(path, sizeof path, "%s" RA_LAB_RELATIVE "/badges/lab-%zu%s.png",
+                     ra_lab_root, details_achievement_index + 1,
+                     (ra_lab_progress & (1u << details_achievement_index)) ? "" : "-locked");
+        else
+            snprintf(path, sizeof path, "%s/badges/%s.png", RA_SD_DIRECTORY, badge);
         load_bounded_png_thumbnail(path, &details_badge);
     }
 
@@ -7437,7 +7454,8 @@ static void render_details_header(uint16_t *fb, const char *title) {
 }
 
 static void render_enhanced_achievements(uint16_t *fb) {
-    render_details_header(fb, tr_or("enhanced.details.achievement_title", "RetroAchievements"));
+    render_details_header(fb, details_achievements_local ? "Local Achievements"
+                      : tr_or("enhanced.details.achievement_title", "RetroAchievements"));
     if (!details_achievements_valid || details_achievement_index >= details_achievements.achievement_count)
         return;
     const RaGameAchievement *achievement = &details_achievements.achievements[details_achievement_index];
@@ -7460,7 +7478,19 @@ static void render_enhanced_achievements(uint16_t *fb) {
     y += step;
     render_details_text(fb, achievement->title, label_x, y, label_width, step, COLOR_TEXT);
     y += step;
-    snprintf(label, sizeof label, "%s: %d", tr_or("enhanced.details.ra_game_id", "RA game ID"), details_achievements.game_id);
+    if (details_achievements_local) {
+        unsigned count = 0, points = 0;
+        for (size_t i = 0; i < details_achievements.achievement_count; i++)
+            if (ra_lab_progress & (1u << i)) {
+                count++;
+                points += (unsigned)details_achievements.achievements[i].points;
+            }
+        snprintf(label, sizeof label, "%s  |  %u/6 unlocked, %u/36 pts",
+                 ra_lab_progress & (1u << details_achievement_index) ? "Local" : "Locked",
+                 count, points);
+    } else
+        snprintf(label, sizeof label, "%s: %d", tr_or("enhanced.details.ra_game_id", "RA game ID"),
+                 details_achievements.game_id);
     render_details_text(fb, label, label_x, y, label_width, step, COLOR_TEXT);
     y += step;
     snprintf(label, sizeof label, "%s: %d",
@@ -7530,7 +7560,8 @@ static void render_enhanced_game_details(uint16_t *fb) {
     if (details_playable_neighbor(selected_index, 1) >= 0)
         render_details_chevron(fb, SCREEN_WIDTH - UI_S(14), 1);
     if (details_achievements_valid) {
-        const char *gallery = tr_or("enhanced.details.achievements_hint", "L2  Achievements");
+        const char *gallery = details_achievements_local ? "L2  Local Achievements"
+                           : tr_or("enhanced.details.achievements_hint", "L2  Achievements");
         int glyph = UI_S(22);
         int label = SCREEN_WIDTH - UI_S(24) - font_measure_text(gallery);
         int footer = SCREEN_HEIGHT - ITEM_HEIGHT - font_get_size() - UI_S(14);
