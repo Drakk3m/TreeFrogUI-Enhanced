@@ -122,7 +122,8 @@ def make(lab, out):
             if value is None:
                 manifest['remove'].append(target)
             else:
-                path=out/'cases'/name/target
+                index=len(manifest['replace'])
+                path=out/'cases'/name/(f'{index:02d}-'+Path(target).name)
                 path.parent.mkdir(parents=True,exist_ok=True)
                 path.write_bytes(value if isinstance(value,bytes) else encode(value))
                 manifest['replace'][target]=str(path.relative_to(out))
