@@ -6413,7 +6413,7 @@ static void render_ra_home(uint16_t *fb) {
     int max_text = SCREEN_WIDTH / 3;
     if (text > max_text) text = max_text;
     char count[32];
-    if (ra_home_lab_count >= 0) snprintf(count, sizeof count, "%d Lab", ra_home_lab_count);
+    if (ra_home_lab_count >= 0) snprintf(count, sizeof count, "%d", ra_home_lab_count);
     else strcpy(count, "0");
     int count_width = font_measure_text(count);
     int left_width = gap + trophy + gap + count_width + gap;
