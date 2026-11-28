@@ -1,0 +1,59 @@
+{
+  "kind": "definition",
+  "version": 1,
+  "payload": {
+    "set": {
+      "namespace": "diagnostic.r36sx-lab",
+      "set_id": "nes-laboratory",
+      "revision": 1
+    },
+    "game_id": "4ada71a3-fdad-4cbb-8fc9-a812f694ca1d",
+    "content": {
+      "console_id": 7,
+      "method": "raw-sha256-v1",
+      "sha256": "d3e2e7b3f200dddd483904b91caa0baaa2970a3e413614cd4df9cfb9098b54ac"
+    },
+    "authorization": {
+      "mode": "original-local",
+      "license": "Project-authored test fixture",
+      "provenance": "R36SX Achievement Laboratory, original build"
+    },
+    "requires": {
+      "provider": "nes-system-ram-v1",
+      "features": [
+        "byte",
+        "delta",
+        "hitcount",
+        "measured",
+        "reset-if"
+      ]
+    },
+    "achievements": [
+      {
+        "id": "1",
+        "condition": "0xH0800=1"
+      },
+      {
+        "id": "2",
+        "condition": "M:0xH0010>=10"
+      },
+      {
+        "id": "3",
+        "condition": "0xH0011=2_d0xH0011=1"
+      },
+      {
+        "id": "4",
+        "condition": "0xH0014>d0xH0014.5."
+      },
+      {
+        "id": "5",
+        "condition": "R:0xH0018=1_0xH0014>d0xH0014.3."
+      },
+      {
+        "id": "6",
+        "condition": "0xH0011>=3_0xH0010>=20_0xH0012=100"
+      }
+    ]
+  },
+  "sha256": "feca6ff2560c3bf0c8c4727fbea1962e71f590e9c32169f5fb446805aded4265"
+}

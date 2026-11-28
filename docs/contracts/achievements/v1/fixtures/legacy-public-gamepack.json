@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "console_id": 1,
+  "game_id": 42,
+  "ra_hash": "0123456789abcdef0123456789abcdef",
+  "metadata_only": true,
+  "achievements": [
+    {
+      "id": 7,
+      "title": "Synthetic legacy fixture",
+      "description": "Metadata test only.",
+      "points": 5,
+      "badge": "badge.png",
+      "definition_fingerprint_md5": "0123456789abcdef0123456789abcdef"
+    }
+  ]
+}

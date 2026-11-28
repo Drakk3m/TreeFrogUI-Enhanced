@@ -1,0 +1,8 @@
+# FrogUI implementation plan
+
+1. Preserve ra_lab_gallery.h and legacy rendering paths behind existing dispatch. Add an opt-in versioned catalog reader outside rendering, using the native launcher selection and Game Details. Apply path and content association hints without hashing the entire SD. Missing metadata and corrupt optional assets use ordinary fallbacks.
+2. Extend the shared gallery model with identity, metadata, compatibility and progress as independent inputs. Reuse the L2 route, cached thumbnails and existing monochrome/color/Local indicators. Unknown shows neutral state, never locked official progress. Existing public entries are metadata-only until independent evidence is available.
+3. At frontend init and return from game, read the scoped snapshots, union valid IDs and update galleries/Home with a single bounded model. Counts are distinct IDs in the displayed scope; points are a separate total. Keep diagnostics separated from normal/official aggregation. Do not evaluate conditions in FrogUI. Keep Classics, launch paths, navigation, RA profile and avatar rendering behavior.
+4. Once PicoArch has current compatibility evidence, show concise missing definition, unsupported core/provider, or unknown state without blocking launch. Take runtime evidence from an agreed host result channel in a later implementation, not a writable SD capability assertion.
+
+Verify the original lab first with the ordinary POC still working. Expand only after test-card acceptance, including restart, load-state and no duplicate popups on prior unlocks. No edits to rendering or production runtime in RA-POC-01.2.

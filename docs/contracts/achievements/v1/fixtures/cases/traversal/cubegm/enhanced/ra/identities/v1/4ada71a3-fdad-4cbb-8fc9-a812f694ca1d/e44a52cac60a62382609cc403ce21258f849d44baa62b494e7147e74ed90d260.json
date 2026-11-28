@@ -1,0 +1,14 @@
+{
+  "kind": "identity",
+  "version": 1,
+  "payload": {
+    "game_id": "4ada71a3-fdad-4cbb-8fc9-a812f694ca1d",
+    "platform": "fc",
+    "content": {
+      "console_id": 7,
+      "method": "raw-sha256-v1",
+      "sha256": "d3e2e7b3f200dddd483904b91caa0baaa2970a3e413614cd4df9cfb9098b54ac"
+    },
+    "rom_path": "roms/../unsafe.nes"
+  }
+}

@@ -1,0 +1,8 @@
+# RA-POC-01.2 host verification
+
+- JSON Schema 2020-12 compiled and used by the reference validator. Twenty fixture cases passed, consisting of seven accepted variants and thirteen rejected variants. Valid cases include empty, partial and full snapshots, cross-slot duplicates, absent progress, absent metadata and a second ROM identity. The latter is a linkage fixture with an original-derived ROM and a different SHA-256. No on-device evaluation of that variant is asserted.
+- The original NES ROM was regenerated from accepted source and compared against the accepted SHA-256. The six strings match lab.def byte-for-byte. Local titles, descriptions, six original badge assets and 36 total points were carried forward. SHA-256 addresses the raw ROM and the compact asset references independently.
+- Host condition parser built from pinned rcheevos v12.3.0 with ASan and UBSan. Only independently gated direct-byte capability conditions were submitted. The known official-style fixture contains synthetic public metadata with an opaque fingerprint; no official executable content is included. The legacy FrogUI ra_game host test passed under both sanitizers.
+- The legacy examples preserve the accepted locked snapshot and an actual sanitized host-generated six-unlock snapshot. Proposed partially/full unlocked examples are synthetic contract fixtures. They have unknown clock status and no official status.
+
+Reproduce with tools/build-condition-check.sh and tools/test-fixtures.py as shown in README. The validation does not cover physical performance, power-loss recovery on FAT, cross-card Studio database migrations, authorization for official definitions or unregistered provider support. That evidence is reserved for implementation and integration tests.
