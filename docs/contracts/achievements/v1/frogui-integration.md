@@ -6,3 +6,9 @@
 4. Once PicoArch has current compatibility evidence, show concise missing definition, unsupported core/provider, or unknown state without blocking launch. Take runtime evidence from an agreed host result channel in a later implementation, not a writable SD capability assertion.
 
 Verify the original lab first with the ordinary POC still working. Expand only after test-card acceptance, including restart, load-state and no duplicate popups on prior unlocks. No edits to rendering or production runtime in RA-POC-01.2.
+
+## RA-POC-01.3 reconciliation gate
+
+Use the pinned contract revision distributed with the handoff. Implement a general normalization boundary using existing platform/folder mappings. Legacy public association accepts the documented logical token or launcher alias only after unique canonical and console matching. Keep exact path, stat and pack cross-checks. v1 consumes canonical lowercase platform and actual SD-relative locator. Do not alter ordinary ROM discovery, default core or gallery presentation under the alias adapter. Test the included Studio export through the real compatibility reader once this adapter exists.
+
+Test the normal roms/nes launch defaults to QuickNES and the existing exact per-ROM override selects the approved FCEUmm. Keep roms/FC default and legacy regression behavior. Use the same gallery/Home for generalized verified progress, keeping legacy public metadata and diagnostic totals distinct. Fail closed for unknown platform/core/console, unsupported provider, alias collisions and mismatched ROM identity.

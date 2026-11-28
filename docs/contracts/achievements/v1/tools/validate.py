@@ -13,6 +13,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from platform_binding import bind
+
 HOME = Path(__file__).resolve().parent.parent
 PIN = 'fd57e900758a9e3de343e7b0316b8a6059dce228'
 LIMIT = 192 * 1024
@@ -228,6 +230,7 @@ def validate(sd, checker):
         require(key not in identities, 'duplicate identity')
         require(p==base/'identities/v1'/x['game_id']/f"{digest(x['content'])}.json", 'identity path')
         safe_path(x['rom_path'])
+        bind(x['platform'], x['rom_path'], x['content']['console_id'])
         if 'archive_member' in x:
             safe_path(x['archive_member'])
         require(x['content']['method']=='raw-sha256-v1' and 'archive_member' not in x and

@@ -1,0 +1,2101 @@
+{
+  "schema_version": 1,
+  "origin": {
+    "studio": "88.3.26 f0368d6a34234d3e7a5d0c3925f851aeeb02d0170019f2ae75c63e31220447ad",
+    "frogui": "15fbea977ee4e7e01d2a1659b8fa4a2e981aba9b",
+    "rcheevos": "fd57e900758a9e3de343e7b0316b8a6059dce228"
+  },
+  "platforms": [
+    {
+      "canonical": "2048",
+      "studio_id": "2048",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "2048",
+        "preferred_add_rom_folder": "2048",
+        "inventory_aliases": [
+          "2048"
+        ],
+        "extensions": [
+          ".zip"
+        ],
+        "core_associations_source": {}
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "32x",
+      "studio_id": "32X",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "32x",
+        "preferred_add_rom_folder": "32x",
+        "inventory_aliases": [
+          "32x"
+        ],
+        "extensions": [
+          ".32x",
+          ".7z",
+          ".bin",
+          ".md",
+          ".smd",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "32x": "picodrive_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "a5200",
+      "studio_id": "A5200",
+      "legacy_aliases": [
+        "a5200"
+      ],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "a5200",
+        "preferred_add_rom_folder": "a5200",
+        "inventory_aliases": [
+          "a5200"
+        ],
+        "extensions": [
+          ".7z",
+          ".a52",
+          ".bin",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "a5200": "a5200_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "a800",
+      "studio_id": "A800",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "a800",
+        "preferred_add_rom_folder": "a800",
+        "inventory_aliases": [
+          "a800"
+        ],
+        "extensions": [
+          ".7z",
+          ".atr",
+          ".xex",
+          ".xfd",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "a800": "atari800_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "amiga",
+      "studio_id": "AMIGA",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "amiga",
+        "preferred_add_rom_folder": "amiga",
+        "inventory_aliases": [
+          "amiga"
+        ],
+        "extensions": [
+          ".7z",
+          ".adf",
+          ".hdf",
+          ".lha",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "amiga": "uae_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "amstrad",
+      "studio_id": "AMSTRAD",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "amstrad",
+        "preferred_add_rom_folder": "amstrad",
+        "inventory_aliases": [
+          "amstrad",
+          "amstradb"
+        ],
+        "extensions": [
+          ".7z",
+          ".cdt",
+          ".dsk",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "amstrad": "cap32_libretro.so",
+          "amstradb": "cap32_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "arduboy",
+      "studio_id": "ARDUBOY",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "arduboy",
+        "preferred_add_rom_folder": "arduboy",
+        "inventory_aliases": [
+          "arduboy",
+          "arduous"
+        ],
+        "extensions": [
+          ".arduboy",
+          ".hex",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "arduboy": "ardens_libretro.so",
+          "arduous": "arduous_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "atari",
+      "studio_id": "ATARI",
+      "legacy_aliases": [
+        "a26",
+        "a78"
+      ],
+      "cube": {
+        "folder": "ATARI",
+        "extensions": [
+          ".7z",
+          ".a26",
+          ".a78",
+          ".bin",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "a26",
+        "preferred_add_rom_folder": "a26",
+        "inventory_aliases": [
+          "a26",
+          "a78",
+          "atari"
+        ],
+        "extensions": [
+          ".7z",
+          ".a26",
+          ".a78",
+          ".bin",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "a26": "stella2014_libretro.so",
+          "a78": "prosystem_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {
+        ".a26": 25,
+        ".a78": 51
+      },
+      "runtime_evidence": null,
+      "ambiguity": "Family spans multiple RA console IDs; extension alone does not qualify an adapter."
+    },
+    {
+      "canonical": "atari_st",
+      "studio_id": "ATARI_ST",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "atari_st",
+        "preferred_add_rom_folder": "atari_st",
+        "inventory_aliases": [
+          "atari-st",
+          "atari_st"
+        ],
+        "extensions": [
+          ".7z",
+          ".msa",
+          ".st",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "atari-st": "castaway_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "bk",
+      "studio_id": "BK",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "bk",
+        "preferred_add_rom_folder": "bk",
+        "inventory_aliases": [
+          "bk"
+        ],
+        "extensions": [
+          ".bin",
+          ".img",
+          ".zip"
+        ],
+        "core_associations_source": {}
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "c64",
+      "studio_id": "C64",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "c64",
+        "preferred_add_rom_folder": "c64",
+        "inventory_aliases": [
+          "c64",
+          "c64f",
+          "c64fc",
+          "c64sc"
+        ],
+        "extensions": [
+          ".7z",
+          ".crt",
+          ".d64",
+          ".prg",
+          ".t64",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "c64": "vice_x64_libretro.so",
+          "c64f": "frodo_libretro.so",
+          "c64fc": "frodo_libretro.so",
+          "c64sc": "vice_x64_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "cavestory",
+      "studio_id": "CAVESTORY",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "cavestory",
+        "preferred_add_rom_folder": "cavestory",
+        "inventory_aliases": [
+          "cavestory"
+        ],
+        "extensions": [
+          ".exe",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "cavestory": "nxengine_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "cdg",
+      "studio_id": "CDG",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "cdg",
+        "preferred_add_rom_folder": "cdg",
+        "inventory_aliases": [
+          "cdg"
+        ],
+        "extensions": [
+          ".cdg"
+        ],
+        "core_associations_source": {
+          "cdg": "pocketcdg_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "chip8",
+      "studio_id": "CHIP8",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "chip8",
+        "preferred_add_rom_folder": "chip8",
+        "inventory_aliases": [
+          "chip8"
+        ],
+        "extensions": [
+          ".c8",
+          ".ch8",
+          ".rom",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "chip8": "jaxe_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "coleco",
+      "studio_id": "COLECO",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "coleco",
+        "preferred_add_rom_folder": "coleco",
+        "inventory_aliases": [
+          "col",
+          "coleco"
+        ],
+        "extensions": [
+          ".col",
+          ".rom",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "col": "gearcoleco_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "doom",
+      "studio_id": "DOOM",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "doom",
+        "preferred_add_rom_folder": "prboom",
+        "inventory_aliases": [
+          "doom",
+          "prboom"
+        ],
+        "extensions": [
+          ".wad",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "prboom": "prboom_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "dos",
+      "studio_id": "DOS",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "dos",
+        "preferred_add_rom_folder": "pico286",
+        "inventory_aliases": [
+          "dos",
+          "pico286"
+        ],
+        "extensions": [
+          ".img",
+          ".iso",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "pico286": "PICO286_BIN"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "fc",
+      "studio_id": "FC",
+      "legacy_aliases": [
+        "fds",
+        "nes",
+        "nesq",
+        "nest"
+      ],
+      "cube": {
+        "folder": "FC",
+        "extensions": [
+          ".7z",
+          ".fds",
+          ".nes",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "nes",
+        "preferred_add_rom_folder": "nes",
+        "inventory_aliases": [
+          "fc",
+          "fcf",
+          "fds",
+          "nes",
+          "nesq",
+          "nest"
+        ],
+        "extensions": [
+          ".7z",
+          ".fds",
+          ".nes",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "fc": "fceumm_libretro.so",
+          "fcf": "freechaf_libretro.so",
+          "fds": "fceumm_libretro.so",
+          "nes": "quicknes_libretro.so",
+          "nesq": "quicknes_libretro.so",
+          "nest": "nestopia_libretro.so"
+        }
+      },
+      "ra_console_id": 7,
+      "ra_console_by_extension": {},
+      "runtime_evidence": "original NES laboratory with exact FCEUmm test-card binary only",
+      "ambiguity": null
+    },
+    {
+      "canonical": "flashback",
+      "studio_id": "FLASHBACK",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "flashback",
+        "preferred_add_rom_folder": "flashback",
+        "inventory_aliases": [
+          "flashback"
+        ],
+        "extensions": [
+          ".bin",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "flashback": "reminiscence_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gb",
+      "studio_id": "GB",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "GB",
+        "extensions": [
+          ".7z",
+          ".gb",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "gb",
+        "preferred_add_rom_folder": "gb",
+        "inventory_aliases": [
+          "dblcherrygb",
+          "gb",
+          "gbb",
+          "gbgb"
+        ],
+        "extensions": [
+          ".7z",
+          ".gb",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "dblcherrygb": "gambatte_libretro.so",
+          "gb": "gambatte_libretro.so",
+          "gbb": "tgbdual_libretro.so",
+          "gbgb": "gearboy_libretro.so"
+        }
+      },
+      "ra_console_id": 4,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gba",
+      "studio_id": "GBA",
+      "legacy_aliases": [
+        "gbac",
+        "gbav",
+        "mgba"
+      ],
+      "cube": {
+        "folder": "GBA",
+        "extensions": [
+          ".7z",
+          ".gba",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "gba",
+        "preferred_add_rom_folder": "gba",
+        "inventory_aliases": [
+          "gba",
+          "gbac",
+          "gbaf",
+          "gbav",
+          "mgba"
+        ],
+        "extensions": [
+          ".7z",
+          ".gba",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gba": "gpsp_libretro.so",
+          "gbac": "gpsp_multicore_libretro.so",
+          "gbaf": "mgba_libretro.so",
+          "gbav": "vba_next_libretro.so",
+          "mgba": "mgba_libretro.so"
+        }
+      },
+      "ra_console_id": 5,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gbc",
+      "studio_id": "GBC",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "GBC",
+        "extensions": [
+          ".7z",
+          ".gbc",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "gbc",
+        "preferred_add_rom_folder": "gbc",
+        "inventory_aliases": [
+          "gbc"
+        ],
+        "extensions": [
+          ".7z",
+          ".gbc",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gbc": "gambatte_libretro.so"
+        }
+      },
+      "ra_console_id": 6,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gg",
+      "studio_id": "GG",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "GG",
+        "extensions": [
+          ".7z",
+          ".gg",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "gg",
+        "preferred_add_rom_folder": "gg",
+        "inventory_aliases": [
+          "gg"
+        ],
+        "extensions": [
+          ".7z",
+          ".gg",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gg": "gearsystem_libretro.so"
+        }
+      },
+      "ra_console_id": 15,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gme",
+      "studio_id": "GME",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "gme",
+        "preferred_add_rom_folder": "gme",
+        "inventory_aliases": [
+          "gme"
+        ],
+        "extensions": [
+          ".nsf",
+          ".spc",
+          ".vgm",
+          ".vgz",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gme": "gme_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gong",
+      "studio_id": "GONG",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "gong",
+        "preferred_add_rom_folder": "gong",
+        "inventory_aliases": [
+          "gong"
+        ],
+        "extensions": [
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gong": "gong_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "gw",
+      "studio_id": "GW",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "gw",
+        "preferred_add_rom_folder": "gw",
+        "inventory_aliases": [
+          "gw"
+        ],
+        "extensions": [
+          ".mgw",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gw": "gw_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "intellivision",
+      "studio_id": "INTELLIVISION",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "intellivision",
+        "preferred_add_rom_folder": "intellivision",
+        "inventory_aliases": [
+          "int",
+          "intellivision"
+        ],
+        "extensions": [
+          ".bin",
+          ".int",
+          ".rom",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "int": "freeintv_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "j2me",
+      "studio_id": "J2ME",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "j2me",
+        "preferred_add_rom_folder": "j2me",
+        "inventory_aliases": [
+          "j2me",
+          "jnb"
+        ],
+        "extensions": [
+          ".jad",
+          ".jar"
+        ],
+        "core_associations_source": {
+          "j2me": "J2ME_CORE",
+          "jnb": "jumpnbump_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "lnx",
+      "studio_id": "LNX",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "lnx",
+        "preferred_add_rom_folder": "lnx",
+        "inventory_aliases": [
+          "lnx"
+        ],
+        "extensions": [
+          ".7z",
+          ".lnx",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "lnx": "handy_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "lowres",
+      "studio_id": "LOWRES",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "lowres",
+        "preferred_add_rom_folder": "lowres",
+        "inventory_aliases": [
+          "lowres",
+          "lowres-nx"
+        ],
+        "extensions": [
+          ".nx",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "lowres-nx": "lowresnx_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "mame",
+      "studio_id": "MAME",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "MAME",
+        "extensions": [
+          ".7z",
+          ".fba",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "m2k",
+        "preferred_add_rom_folder": "mame",
+        "inventory_aliases": [
+          "cps1",
+          "cps2",
+          "cps3",
+          "m2k",
+          "mame"
+        ],
+        "extensions": [
+          ".7z",
+          ".fba",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "cps1": "fbalpha2012_cps1_libretro.so",
+          "cps2": "fbalpha2012_cps2_libretro.so",
+          "cps3": "fbalpha2012_cps3_libretro.so",
+          "m2k": "mame2000_libretro.so"
+        }
+      },
+      "ra_console_id": 27,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": "Arcade grouping is not a universal core compatibility declaration."
+    },
+    {
+      "canonical": "md",
+      "studio_id": "MD",
+      "legacy_aliases": [
+        "gpgx",
+        "sega"
+      ],
+      "cube": {
+        "folder": "MD",
+        "extensions": [
+          ".7z",
+          ".bin",
+          ".gen",
+          ".md",
+          ".smd",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "sega",
+        "preferred_add_rom_folder": "sega",
+        "inventory_aliases": [
+          "gpgx",
+          "md",
+          "sega"
+        ],
+        "extensions": [
+          ".7z",
+          ".bin",
+          ".gen",
+          ".md",
+          ".smd",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "gpgx": "genesis_plus_gx_libretro.so",
+          "md": "picodrive_libretro.so",
+          "sega": "picodrive_libretro.so"
+        }
+      },
+      "ra_console_id": 1,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "mrboom",
+      "studio_id": "MRBOOM",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "mrboom",
+        "preferred_add_rom_folder": "mrboom",
+        "inventory_aliases": [
+          "mrboom"
+        ],
+        "extensions": [
+          ".zip"
+        ],
+        "core_associations_source": {}
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "msx",
+      "studio_id": "MSX",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "msx",
+        "preferred_add_rom_folder": "msx",
+        "inventory_aliases": [
+          "msx"
+        ],
+        "extensions": [
+          ".dsk",
+          ".mx1",
+          ".mx2",
+          ".rom",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "msx": "bluemsx_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "nds",
+      "studio_id": "NDS",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "nds",
+        "preferred_add_rom_folder": "nds",
+        "inventory_aliases": [
+          "nds"
+        ],
+        "extensions": [
+          ".7z",
+          ".nds",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "nds": "DSPERATE_BIN"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "neogeo",
+      "studio_id": "NEOGEO",
+      "legacy_aliases": [
+        "geolith"
+      ],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "neogeo",
+        "preferred_add_rom_folder": "neogeo",
+        "inventory_aliases": [
+          "geolith",
+          "neogeo"
+        ],
+        "extensions": [
+          ".7z",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "geolith": "geolith_libretro.so",
+          "neogeo": "fbalpha2012_neogeo_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": "Studio inventory neogeo maps to MAME; geolith is a separate route."
+    },
+    {
+      "canonical": "ngpc",
+      "studio_id": "NGPC",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "NGPC",
+        "extensions": [
+          ".7z",
+          ".ngc",
+          ".ngp",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "ngpc",
+        "preferred_add_rom_folder": "ngpc",
+        "inventory_aliases": [
+          "ngpc"
+        ],
+        "extensions": [
+          ".7z",
+          ".ngc",
+          ".ngp",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "ngpc": "race_libretro.so"
+        }
+      },
+      "ra_console_id": 14,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "nxb",
+      "studio_id": "NXB",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "nxb",
+        "preferred_add_rom_folder": "nxb",
+        "inventory_aliases": [
+          "nxb"
+        ],
+        "extensions": [
+          ".nxb",
+          ".zip"
+        ],
+        "core_associations_source": {}
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "o2em",
+      "studio_id": "O2EM",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "o2em",
+        "preferred_add_rom_folder": "o2em",
+        "inventory_aliases": [
+          "o2em"
+        ],
+        "extensions": [
+          ".bin",
+          ".rom",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "o2em": "o2em_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "openbor",
+      "studio_id": "OPENBOR",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "openbor",
+        "preferred_add_rom_folder": "openbor",
+        "inventory_aliases": [
+          "openbor"
+        ],
+        "extensions": [
+          ".pak"
+        ],
+        "core_associations_source": {
+          "openbor": "OPENBOR_CORE"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "outrun",
+      "studio_id": "OUTRUN",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "outrun",
+        "preferred_add_rom_folder": "outrun",
+        "inventory_aliases": [
+          "outrun"
+        ],
+        "extensions": [
+          ".zip"
+        ],
+        "core_associations_source": {
+          "outrun": "cannonball_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "pc8800",
+      "studio_id": "PC8800",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "pc8800",
+        "preferred_add_rom_folder": "pc8800",
+        "inventory_aliases": [
+          "pc8800"
+        ],
+        "extensions": [
+          ".7z",
+          ".d88",
+          ".fdi",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "pc8800": "quasi88_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "pce",
+      "studio_id": "PCE",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "PCE",
+        "extensions": [
+          ".7z",
+          ".pce",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "pce",
+        "preferred_add_rom_folder": "pce",
+        "inventory_aliases": [
+          "pce",
+          "pcesgx"
+        ],
+        "extensions": [
+          ".7z",
+          ".pce",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "pce": "mednafen_pce_fast_libretro.so",
+          "pcesgx": "mednafen_supergrafx_libretro.so"
+        }
+      },
+      "ra_console_id": 8,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "pcfx",
+      "studio_id": "PCFX",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "pcfx",
+        "preferred_add_rom_folder": "pcfx",
+        "inventory_aliases": [
+          "pcfx"
+        ],
+        "extensions": [
+          ".7z",
+          ".ccd",
+          ".chd",
+          ".cue",
+          ".iso",
+          ".m3u",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "pcfx": "mednafen_pcfx_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "pico8",
+      "studio_id": "PICO8",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "pico8",
+        "preferred_add_rom_folder": "pico8",
+        "inventory_aliases": [
+          "fake08",
+          "picante8",
+          "pico8",
+          "retro8"
+        ],
+        "extensions": [
+          ".p8",
+          ".png",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "fake08": "fake08_libretro.so",
+          "picante8": "picante8_libretro.so",
+          "pico8": "picante8_libretro.so",
+          "retro8": "retro8_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "pokem",
+      "studio_id": "POKEM",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "pokem",
+        "preferred_add_rom_folder": "pokem",
+        "inventory_aliases": [
+          "pokem",
+          "pokket"
+        ],
+        "extensions": [
+          ".7z",
+          ".min",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "pokem": "pokemini_libretro.so",
+          "pokket": "pokket_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "ps",
+      "studio_id": "PS",
+      "legacy_aliases": [
+        "ps1",
+        "ps1r",
+        "psx",
+        "qpsx"
+      ],
+      "cube": {
+        "folder": "PS",
+        "extensions": [
+          ".7z",
+          ".bin",
+          ".chd",
+          ".cue",
+          ".img",
+          ".iso",
+          ".pbp",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "ps1",
+        "preferred_add_rom_folder": "ps1",
+        "inventory_aliases": [
+          "ps",
+          "ps1",
+          "ps1r",
+          "psx",
+          "qpsx"
+        ],
+        "extensions": [
+          ".7z",
+          ".bin",
+          ".ccd",
+          ".chd",
+          ".cue",
+          ".img",
+          ".iso",
+          ".m3u",
+          ".pbp",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "ps": "pcsx_rearmed_libretro.so",
+          "ps1": "pcsx_rearmed_libretro.so",
+          "ps1r": "pcsx_rearmed_libretro.so",
+          "psx": "pcsx_rearmed_libretro.so",
+          "qpsx": "qpsx_libretro.so"
+        }
+      },
+      "ra_console_id": 12,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "psp",
+      "studio_id": "PSP",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "psp",
+        "preferred_add_rom_folder": "psp",
+        "inventory_aliases": [
+          "psp"
+        ],
+        "extensions": [
+          ".7z",
+          ".chd",
+          ".cso",
+          ".iso",
+          ".pbp",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "psp": "ppsspp_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "quake",
+      "studio_id": "QUAKE",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "quake",
+        "preferred_add_rom_folder": "quake",
+        "inventory_aliases": [
+          "quake"
+        ],
+        "extensions": [
+          ".pak",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "quake": "tyrquake_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "quake2",
+      "studio_id": "QUAKE2",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "quake2",
+        "preferred_add_rom_folder": "quake2",
+        "inventory_aliases": [
+          "quake2"
+        ],
+        "extensions": [
+          ".pak",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "quake2": "vitaquake2_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "scummvm",
+      "studio_id": "SCUMMVM",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "scummvm",
+        "preferred_add_rom_folder": "scummvm",
+        "inventory_aliases": [
+          "scummvm"
+        ],
+        "extensions": [
+          ".scummvm"
+        ],
+        "core_associations_source": {
+          "scummvm": "scummvm_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "sega_cd",
+      "studio_id": "SEGA_CD",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "sega_cd",
+        "preferred_add_rom_folder": "segacd",
+        "inventory_aliases": [
+          "sega_cd",
+          "segacd"
+        ],
+        "extensions": [
+          ".7z",
+          ".ccd",
+          ".chd",
+          ".cue",
+          ".iso",
+          ".m3u",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "segacd": "genesis_plus_gx_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "sfc",
+      "studio_id": "SFC",
+      "legacy_aliases": [
+        "snes",
+        "snes02",
+        "snesz"
+      ],
+      "cube": {
+        "folder": "SFC",
+        "extensions": [
+          ".7z",
+          ".sfc",
+          ".smc",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "snes",
+        "preferred_add_rom_folder": "snes",
+        "inventory_aliases": [
+          "sfc",
+          "snes",
+          "snes02",
+          "snesz"
+        ],
+        "extensions": [
+          ".7z",
+          ".sfc",
+          ".smc",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "sfc": "snes9x2005_plus_libretro.so",
+          "snes": "snes9x2005_plus_libretro.so",
+          "snes02": "snes9x2002_libretro.so",
+          "snesz": "snes9x-Z_libretro.so"
+        }
+      },
+      "ra_console_id": 3,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "sms",
+      "studio_id": "SMS",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "SMS",
+        "extensions": [
+          ".7z",
+          ".sms",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "sms",
+        "preferred_add_rom_folder": "sms",
+        "inventory_aliases": [
+          "sms"
+        ],
+        "extensions": [
+          ".7z",
+          ".sms",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "sms": "picodrive_libretro.so"
+        }
+      },
+      "ra_console_id": 11,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "thomson",
+      "studio_id": "THOMSON",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "thomson",
+        "preferred_add_rom_folder": "thomson",
+        "inventory_aliases": [
+          "thom",
+          "thomson"
+        ],
+        "extensions": [
+          ".fd",
+          ".sap",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "thom": "theodore_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "tic80",
+      "studio_id": "TIC80",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "tic80",
+        "preferred_add_rom_folder": "tic80",
+        "inventory_aliases": [
+          "tic80"
+        ],
+        "extensions": [
+          ".png",
+          ".tic"
+        ],
+        "core_associations_source": {
+          "tic80": "tic80_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "vapor",
+      "studio_id": "VAPOR",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "vapor",
+        "preferred_add_rom_folder": "vapor",
+        "inventory_aliases": [
+          "vapor"
+        ],
+        "extensions": [
+          ".zip"
+        ],
+        "core_associations_source": {
+          "vapor": "vaporspec_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "vb",
+      "studio_id": "VB",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "vb",
+        "preferred_add_rom_folder": "vb",
+        "inventory_aliases": [
+          "vb"
+        ],
+        "extensions": [
+          ".7z",
+          ".vb",
+          ".vboy",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "vb": "mednafen_vb_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "vectrex",
+      "studio_id": "VECTREX",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "vectrex",
+        "preferred_add_rom_folder": "vectrex",
+        "inventory_aliases": [
+          "vec",
+          "vectrex"
+        ],
+        "extensions": [
+          ".bin",
+          ".vec",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "vec": "vecx_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "vic20",
+      "studio_id": "VIC20",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "vic20",
+        "preferred_add_rom_folder": "vic20",
+        "inventory_aliases": [
+          "vic20"
+        ],
+        "extensions": [
+          ".crt",
+          ".d64",
+          ".prg",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "vic20": "vice_xvic_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "wolf3d",
+      "studio_id": "WOLF3D",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "wolf3d",
+        "preferred_add_rom_folder": "wolf3d",
+        "inventory_aliases": [
+          "wolf3d"
+        ],
+        "extensions": [
+          ".sod",
+          ".wl6",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "wolf3d": "ecwolf_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "ws",
+      "studio_id": "WS",
+      "legacy_aliases": [
+        "wswan"
+      ],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "wswan",
+        "preferred_add_rom_folder": "wswan",
+        "inventory_aliases": [
+          "ws",
+          "wswan"
+        ],
+        "extensions": [
+          ".7z",
+          ".ws",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "wswan": "mednafen_wswan_libretro.so"
+        }
+      },
+      "ra_console_id": 53,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "wsc",
+      "studio_id": "WSC",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": "WSC",
+        "extensions": [
+          ".7z",
+          ".ws",
+          ".wsc",
+          ".zip"
+        ]
+      },
+      "treefrog": {
+        "default_folder": "wsc",
+        "preferred_add_rom_folder": "wsc",
+        "inventory_aliases": [
+          "wsc"
+        ],
+        "extensions": [
+          ".7z",
+          ".ws",
+          ".wsc",
+          ".zip"
+        ],
+        "core_associations_source": {}
+      },
+      "ra_console_id": 53,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "wsv",
+      "studio_id": "WSV",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "wsv",
+        "preferred_add_rom_folder": "wsv",
+        "inventory_aliases": [
+          "wsv"
+        ],
+        "extensions": [
+          ".7z",
+          ".bin",
+          ".sv",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "wsv": "potator_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "x48",
+      "studio_id": "X48",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": null,
+        "preferred_add_rom_folder": null,
+        "inventory_aliases": [
+          "x48"
+        ],
+        "extensions": [],
+        "core_associations_source": {}
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    },
+    {
+      "canonical": "zx",
+      "studio_id": "ZX",
+      "legacy_aliases": [],
+      "cube": {
+        "folder": null,
+        "extensions": []
+      },
+      "treefrog": {
+        "default_folder": "zx",
+        "preferred_add_rom_folder": "zx",
+        "inventory_aliases": [
+          "spec",
+          "zx"
+        ],
+        "extensions": [
+          ".sna",
+          ".tap",
+          ".tzx",
+          ".z80",
+          ".zip"
+        ],
+        "core_associations_source": {
+          "spec": "fuse_libretro.so"
+        }
+      },
+      "ra_console_id": null,
+      "ra_console_by_extension": {},
+      "runtime_evidence": null,
+      "ambiguity": null
+    }
+  ],
+  "quarantined_aliases": {
+    "fds": "Separate FDS media/core route; v1 NES cartridge reconciliation does not infer equivalence.",
+    "fcf": "Studio inventory association lacks matching explicit FrogUI core route.",
+    "neogeo": "Inventory resolves to MAME while the canonical Studio ID also means NEOGEO.",
+    "pcesgx": "SuperGrafx and PCE grouped by inventory only.",
+    "a26": "Atari family uses distinct console IDs; require an approved qualified adapter.",
+    "a78": "Atari family uses distinct console IDs; require an approved qualified adapter."
+  },
+  "frogui_only_routes": {
+    "classicube": "CLASSICUBE_CORE",
+    "mcpe": "MCPE_CORE",
+    "openclaw": "CLAW_CORE",
+    "duke3d": "DUKE3D_CORE",
+    "undertale": "BUTTERSCOTCH_CORE",
+    "diablo": "DIABLO_BIN",
+    "zsnes": "snes9x-Z_libretro.so",
+    "zx81": "81_libretro.so",
+    "epub": "FROGGYREADER_CORE",
+    "xrick": "xrick_libretro.so",
+    "lgpt": "LGPT_BIN",
+    "rockbox": "ROCKBOX_BIN",
+    "ebook": "EBOOK_BIN",
+    "videos": "VIDEO_BIN",
+    "video": "VIDEO_BIN",
+    "music": "VIDEO_BIN",
+    "audio": "VIDEO_BIN",
+    "frogshell": "FROGSHELL_CORE",
+    "images": "IMAGE_BIN",
+    "photos": "IMAGE_BIN",
+    "arcade": "mame2000_libretro.so",
+    "xmil": "x68k_libretro.so"
+  },
+  "studio_inventory_only_folders": [
+    "images",
+    "menu",
+    "mp3",
+    "music",
+    "rockbox",
+    "save",
+    "videos",
+    "xmil",
+    "xrick",
+    "zx81"
+  ]
+}

@@ -225,7 +225,8 @@
           "$ref": "#/$defs/uuid"
         },
         "platform": {
-          "$ref": "#/$defs/id"
+          "$ref": "#/$defs/id",
+          "description": "Canonical lower-case platform key from platform-mapping-v1.json. Launcher folder lives in rom_path; semantic binding is required."
         },
         "content": {
           "$ref": "#/$defs/content"

@@ -4,6 +4,7 @@ This directory is the authority for the proposed offline interchange. Consumers 
 
 - [Normative interoperability contract](achievement-data-contract-v1.md)
 - [Source audit](source-audit.md), [compatibility and migration](compatibility-and-migration.md), [bounds and validation](validation-rules.md), [acceptance checklist](acceptance-checklist.md)
+- [Platform mapping and launch routing](platform-and-routing.md), [machine-readable inventory](schemas/platform-mapping-v1.json)
 - [ROM Studio agent handoff](studio-integration.md), [FrogUI plan](frogui-integration.md), [PicoArch plan](picoarch-integration.md)
 - [JSON Schema](schemas/contract-v1.schema.json), [reference test matrix](fixtures/cases.json), [reference SD fixture](fixtures/reference-sd.zip)
 
@@ -13,6 +14,8 @@ Host tools require Python 3.10+, jsonschema 4 and a C compiler. Build the syntax
 
     bash tools/build-condition-check.sh /path/to/pinned/rcheevos /path/to/condition-check
     python3 tools/test-fixtures.py --checker /path/to/condition-check
+    python3 tools/test-platforms.py
+    python3 tools/test-routing.py /path/to/accepted/FrogUI
     python3 tools/validate.py /path/to/extracted/reference-sd --checker /path/to/condition-check
 
 Regenerate fixtures using python3 tools/make-fixtures.py --laboratory PATH_TO_ACCEPTED_LAB_SOURCE. The validator is a strict host fixture/package validator, not a device runtime or a recovery importer. The checklists specify additional cold-start, FAT and console verification required for a future implementation.

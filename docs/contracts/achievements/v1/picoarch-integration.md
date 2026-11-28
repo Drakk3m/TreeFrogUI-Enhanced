@@ -7,3 +7,7 @@
 5. Prove original NES lab end to end through generalized definitions with the accepted fixture, retain the old POC regression path and compare behavior on a test card. Only then design archive adapters, disc support and other core profiles. Do not claim official synchronization eligibility.
 
 Open questions before target enablement: precise run-to-run capability evidence channel to FrogUI, temporary full-path source immutability on FAT, worker scheduling/flush latency and bounded resources, PicoArch support for core identity at load and deterministic profile selection. These do not alter the serialized identities or host fixture outputs.
+
+## RA-POC-01.3 first-provider routing gate
+
+Pin the same contract commit as Studio and FrogUI. Require the original lab's actual bytes and approved FCEUmm binary for the first test-card acceptance. Source and host launch tracing shows roms/nes ordinarily selects QuickNES and roms/FC selects FCEUmm. Configure only the test ROM via existing per-ROM override when using the Studio directory. Authoritative references are the actual core path/digest and provider, not a normalized platform alias. Handle the accepted full-path FCEUmm, reusing the established verified effective path and 2 KiB read boundary. Run the shared rcheevos definition + durable scoped snapshot path, show results in the existing gallery, refresh counts, and keep the accepted original POC and reboot regressions. No multi-core rollout in this phase.
