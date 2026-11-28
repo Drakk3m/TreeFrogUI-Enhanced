@@ -6325,9 +6325,11 @@ static void enhanced_home_utility_icon(uint16_t *fb, enum EnhancedHomeItemKind k
 }
 
 #define RA_SD_DIRECTORY SDCARD_BASE "/cubegm/enhanced/ra"
-enum { RA_AVATAR_EDGE = 40, RA_TROPHY_EDGE = 28 };
+enum { RA_AVATAR_EDGE = 64, RA_TROPHY_EDGE = 28 };
 static RaProfile ra_home_profile;
 static bool ra_home_profile_valid;
+static int ra_home_lab_count = -1;
+static int read_ra_lab_home_count(void);
 static uint16_t ra_avatar_pixels[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
 static uint8_t ra_avatar_alpha[RA_AVATAR_EDGE * RA_AVATAR_EDGE];
 static SystemIcon ra_avatar_icon;
@@ -6369,6 +6371,7 @@ static void load_ra_trophy(void) {
 }
 
 static void load_ra_home(const char *directory) {
+    ra_home_lab_count = read_ra_lab_home_count();
     ra_home_profile_valid = ra_profile_read(directory, &ra_home_profile);
     ra_avatar_icon = (SystemIcon){0};
     if (!ra_home_profile_valid) return;
@@ -6403,22 +6406,25 @@ static void render_ra_trophy(uint16_t *fb, int x, int y, int size) {
 }
 
 static void render_ra_home(uint16_t *fb) {
-    if (!ra_home_profile_valid) return;
-    int icon = UI_S(34), gap = UI_S(8), trophy = UI_S(24);
+    if (!ra_home_profile_valid && ra_home_lab_count < 0) return;
+    int icon = UI_S(50), gap = UI_S(8), trophy = UI_S(24);
     int y = UI_S(39), right = SCREEN_WIDTH - UI_S(24);
-    int text = font_measure_text(ra_home_profile.username);
+    int text = ra_home_profile_valid ? font_measure_text(ra_home_profile.username) : 0;
     int max_text = SCREEN_WIDTH / 3;
     if (text > max_text) text = max_text;
-    const char *pending_count = "0";
-    int count_width = font_measure_text(pending_count);
+    char count[32];
+    if (ra_home_lab_count >= 0) snprintf(count, sizeof count, "%d Lab", ra_home_lab_count);
+    else strcpy(count, "0");
+    int count_width = font_measure_text(count);
     int left_width = gap + trophy + gap + count_width + gap;
     int right_width = gap + icon + gap + text + gap;
     int right_left = right - right_width;
 
     render_rounded_rect_alpha(fb, UI_S(24), y, left_width, icon + gap,
                               gap, COLOR_BG, 216);
-    render_rounded_rect_alpha(fb, right_left, y, right_width, icon + gap,
-                              gap, COLOR_BG, 216);
+    if (ra_home_profile_valid)
+        render_rounded_rect_alpha(fb, right_left, y, right_width, icon + gap,
+                                  gap, COLOR_BG, 216);
 
     int cup = UI_S(24) + gap;
     int top = y + (icon + gap - trophy) / 2;
@@ -6426,7 +6432,8 @@ static void render_ra_home(uint16_t *fb) {
     int count_x = cup + trophy + gap;
     int ty = y + (icon + gap - font_get_size()) / 2;
     font_draw_text(fb, SCREEN_WIDTH, SCREEN_HEIGHT, count_x, ty,
-                   pending_count, COLOR_DISABLED);
+                   count, ra_home_lab_count >= 0 ? COLOR_TEXT : COLOR_DISABLED);
+    if (!ra_home_profile_valid) return;
 
     int ax = right_left + gap, ay = y + gap / 2;
     if (ra_avatar_icon.pixels) {

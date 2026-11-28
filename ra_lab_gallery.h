@@ -1,6 +1,7 @@
 #ifndef FROGUI_RA_LAB_GALLERY_H
 #define FROGUI_RA_LAB_GALLERY_H
 #include "ra_lab_fixture.h"
+#include "ra_lab_original_fixture.h"
 
 #define RA_LAB_RELATIVE "/cubegm/enhanced/ra/local/r36sx-lab"
 
@@ -26,16 +27,18 @@ static bool ra_lab_file_equal(const char *path, const void *expected, size_t len
     return equal;
 }
 
-static unsigned ra_lab_read_progress(const char *path) {
-    char data[128], expected[] =
-        "R36SX-LAB-PROGRESS 1\nlocal-player\nr36sx-lab\nNES\n" RA_LAB_SHA256 "\n1\n";
+static unsigned ra_lab_read_progress(const char *path, bool original) {
+    char data[128], expected[128];
+    int n = snprintf(expected, sizeof expected,
+        "R36SX-LAB-PROGRESS 1\nlocal-player\nr36sx-lab\nNES\n%s\n1\n",
+        original ? RA_LAB_ORIGINAL_SHA256 : RA_LAB_SHA256);
+    if (n < 0 || (size_t)n >= sizeof expected) return 0;
     int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW);
     if (fd < 0) return 0;
     struct stat info;
     ssize_t size = fstat(fd, &info) == 0 && S_ISREG(info.st_mode)
                  ? read(fd, data, sizeof data) : -1;
     close(fd);
-    size_t n = sizeof expected - 1;
     if (size != (ssize_t)n + 3 || memcmp(data, expected, n) || data[n + 2] != '\n')
         return 0;
     static const char hex[] = "0123456789abcdef";
@@ -44,18 +47,42 @@ static unsigned ra_lab_read_progress(const char *path) {
     return digit ? (unsigned)(data[n] - '0') * 16 + (unsigned)(digit - hex) : 0;
 }
 
+static unsigned ra_lab_mask(const char *root, bool original) {
+    char path[1024];
+    int n = snprintf(path, sizeof path, "%s" RA_LAB_RELATIVE "/progress.v1", root);
+    if (n < 0 || (size_t)n >= sizeof path) return 0;
+    unsigned mask = ra_lab_read_progress(path, original);
+    if (!original) {
+        n = snprintf(path, sizeof path, "%s" RA_LAB_RELATIVE "/progress-readable.v1", root);
+        if (n >= 0 && (size_t)n < sizeof path) mask |= ra_lab_read_progress(path, false);
+    }
+    return mask;
+}
+
+static int read_ra_lab_home_count(void) {
+    char path[] = SDCARD_BASE RA_LAB_RELATIVE "/lab.def";
+    bool original = ra_lab_file_equal(path, ra_lab_original_definitions, sizeof ra_lab_original_definitions - 1);
+    if (!original && !ra_lab_file_equal(path, ra_lab_definitions, sizeof ra_lab_definitions - 1))
+        return -1;
+    unsigned mask = ra_lab_mask(SDCARD_BASE, original);
+    int count = 0;
+    for (; mask; mask >>= 1) count += mask & 1u;
+    return count;
+}
+
 static bool load_ra_lab_gallery(const char *root, const char *path,
                                 const char *platform, RaGame *game) {
     if (strcasecmp(platform, "nes") && strcasecmp(platform, "fc")) return false;
     if (strcmp(get_basename(path), "r36sx_achievement_lab.nes")) return false;
     char resource[1024];
     int n = snprintf(resource, sizeof resource, "%s" RA_LAB_RELATIVE "/lab.def", root);
-    if (n < 0 || (size_t)n >= sizeof resource ||
-        !ra_lab_file_equal(resource, ra_lab_definitions, sizeof ra_lab_definitions - 1)) return false;
+    if (n < 0 || (size_t)n >= sizeof resource) return false;
+    bool original = ra_lab_file_equal(resource, ra_lab_original_definitions, sizeof ra_lab_original_definitions - 1);
+    if (!original && !ra_lab_file_equal(resource, ra_lab_definitions, sizeof ra_lab_definitions - 1)) return false;
     char *rom = malloc(RA_LAB_ROM_SIZE);
     if (!rom) return false;
-    int decoded = stbi_zlib_decode_buffer(rom, RA_LAB_ROM_SIZE, (const char *)ra_lab_rom_zlib,
-                                          sizeof ra_lab_rom_zlib);
+    int decoded = stbi_zlib_decode_buffer(rom, RA_LAB_ROM_SIZE, (const char *)(original ? ra_lab_original_rom_zlib : ra_lab_rom_zlib),
+                                          original ? sizeof ra_lab_original_rom_zlib : sizeof ra_lab_rom_zlib);
     bool match = decoded == RA_LAB_ROM_SIZE && ra_lab_file_equal(path, rom, RA_LAB_ROM_SIZE);
     free(rom);
     if (!match) return false;
@@ -79,8 +106,7 @@ static bool load_ra_lab_gallery(const char *root, const char *path,
         strcpy(achievement->description, descriptions[i]);
         snprintf(achievement->badge, sizeof achievement->badge, "lab-%zu", i + 1);
     }
-    n = snprintf(resource, sizeof resource, "%s" RA_LAB_RELATIVE "/progress.v1", root);
-    ra_lab_progress = n >= 0 && (size_t)n < sizeof resource ? ra_lab_read_progress(resource) : 0;
+    ra_lab_progress = ra_lab_mask(root, original);
     if (snprintf(ra_lab_root, sizeof ra_lab_root, "%s", root) >= (int)sizeof ra_lab_root)
         return false;
     return true;

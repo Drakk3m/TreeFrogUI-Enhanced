@@ -1247,7 +1247,7 @@ static void test_ra_home(const char *root) {
     for (int y = 0; y < 480; y++)
         for (int x = 0; x < 640; x++)
             if (frame[y * 640 + x]) {
-                assert(y >= 39 && y < 82);
+                assert(y >= 39 && y < 97);
                 if (x < 120) left_pill = true;
                 if (x >= 310) right_pill = true;
                 if (x >= 120 && x < 310) central_gap_clear = false;
