@@ -1,0 +1,705 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:r36sx:achievement-contract:1",
+  "title": "R36SX achievement contract v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "identity"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/identity"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "metadata"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/metadata"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "definition"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/definition"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "profile"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/profile"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "selection"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/selection"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "capability"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/capability"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "progress"
+        },
+        "version": {
+          "const": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/progress"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "payload",
+        "sha256"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "maxLength": 64
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "maxLength": 36
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "maxLength": 64
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^(diagnostic|local|ra)[.][a-z0-9][a-z0-9._-]{0,61}$",
+      "maxLength": 64
+    },
+    "content": {
+      "type": "object",
+      "properties": {
+        "console_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "method": {
+          "enum": [
+            "raw-sha256-v1",
+            "fileset-sha256-v1"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "console_id",
+        "method",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "ra_identity": {
+      "type": "object",
+      "properties": {
+        "game_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "game_id",
+        "hash"
+      ],
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "game_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform": {
+          "$ref": "#/$defs/id",
+          "description": "Canonical lower-case platform key from platform-mapping-v1.json. Launcher folder lives in rom_path; semantic binding is required."
+        },
+        "content": {
+          "$ref": "#/$defs/content"
+        },
+        "rom_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "container_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "archive_member": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "ra": {
+          "$ref": "#/$defs/ra_identity"
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "$ref": "#/$defs/id"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "sha256": {
+                "$ref": "#/$defs/digest"
+              }
+            },
+            "required": [
+              "role",
+              "path",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "game_id",
+        "platform",
+        "content",
+        "rom_path"
+      ],
+      "additionalProperties": false
+    },
+    "set": {
+      "type": "object",
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/namespace"
+        },
+        "set_id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "namespace",
+        "set_id",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "set": {
+          "$ref": "#/$defs/set"
+        },
+        "game_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "source": {
+          "enum": [
+            "original-local",
+            "authorized-metadata"
+          ]
+        },
+        "metadata_only": {
+          "const": true
+        },
+        "achievements": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "points": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "badge_sha256": {
+                "$ref": "#/$defs/digest"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "description",
+              "points"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "set",
+        "game_id",
+        "source",
+        "metadata_only",
+        "achievements"
+      ],
+      "additionalProperties": false
+    },
+    "definition": {
+      "type": "object",
+      "properties": {
+        "set": {
+          "$ref": "#/$defs/set"
+        },
+        "game_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "content": {
+          "$ref": "#/$defs/content"
+        },
+        "authorization": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "original-local",
+                "authorized"
+              ]
+            },
+            "license": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "provenance": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "mode",
+            "license",
+            "provenance"
+          ],
+          "additionalProperties": false
+        },
+        "requires": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "$ref": "#/$defs/id"
+            },
+            "features": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          },
+          "required": [
+            "provider",
+            "features"
+          ],
+          "additionalProperties": false
+        },
+        "achievements": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "condition": {
+                "type": "string",
+                "pattern": "^[!-~]{1,1024}$",
+                "maxLength": 1024
+              }
+            },
+            "required": [
+              "id",
+              "condition"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "ra": {
+          "$ref": "#/$defs/ra_identity"
+        }
+      },
+      "required": [
+        "set",
+        "game_id",
+        "content",
+        "authorization",
+        "requires",
+        "achievements"
+      ],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "profile_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "avatar_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "ra_username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "profile_id",
+        "display_name"
+      ],
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "properties": {
+        "profile_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "profile_id"
+      ],
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "properties": {
+        "content_console_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "core_id": {
+          "$ref": "#/$defs/id"
+        },
+        "core_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "provider": {
+          "$ref": "#/$defs/id"
+        },
+        "regions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              }
+            },
+            "required": [
+              "start",
+              "length"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "features": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "definition_versions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
+        "rcheevos_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "maxLength": 40
+        },
+        "evidence": {
+          "enum": [
+            "physical-legacy-only",
+            "host-validated",
+            "physically-validated",
+            "unverified"
+          ]
+        },
+        "restrictions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "generalized_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "content_console_id",
+        "core_id",
+        "core_sha256",
+        "provider",
+        "regions",
+        "features",
+        "definition_versions",
+        "rcheevos_revision",
+        "evidence",
+        "restrictions",
+        "generalized_enabled"
+      ],
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "profile_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "set": {
+          "$ref": "#/$defs/set"
+        },
+        "content": {
+          "$ref": "#/$defs/content"
+        },
+        "definition_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "profile_id",
+        "set",
+        "content",
+        "definition_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "achievement_id": {
+          "$ref": "#/$defs/id"
+        },
+        "event_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "state": {
+          "const": "unlocked"
+        },
+        "verification": {
+          "const": "local-runtime"
+        },
+        "timestamp_status": {
+          "enum": [
+            "unknown",
+            "trusted"
+          ]
+        },
+        "unlocked_at": {
+          "type": "integer",
+          "minimum": 946684800,
+          "maximum": 4102444799
+        },
+        "core_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "achievement_id",
+        "event_id",
+        "state",
+        "verification",
+        "timestamp_status"
+      ],
+      "additionalProperties": false
+    },
+    "progress": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "events": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        }
+      },
+      "required": [
+        "scope",
+        "generation",
+        "events"
+      ],
+      "additionalProperties": false
+    },
+    "asset": {
+      "$ref": "#/$defs/digest"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "kind": "progress",
+  "version": 1,
+  "payload": {
+    "scope": {
+      "profile_id": "0206e534-6b96-4cb5-a1fe-e9c0c351a789",
+      "set": {
+        "namespace": "diagnostic.r36sx-lab",
+        "set_id": "nes-laboratory",
+        "revision": 1
+      },
+      "content": {
+        "console_id": 7,
+        "method": "raw-sha256-v1",
+        "sha256": "d3e2e7b3f200dddd483904b91caa0baaa2970a3e413614cd4df9cfb9098b54ac"
+      },
+      "definition_sha256": "195dcf7bcdcaf21d626af8738bb4549162865cd6b51e8a836bd35bba388d72ee"
+    },
+    "generation": 0,
+    "events": []
+  },
+  "sha256": "7ddc08e77d2a71cd5a53cc7d082d287498d44d54c663db61f7716487ccc010c3"
+}

@@ -1,0 +1,66 @@
+{
+  "kind": "progress",
+  "version": 1,
+  "payload": {
+    "scope": {
+      "profile_id": "b191ee8d-2287-4ce2-82a7-7c6434c707c1",
+      "set": {
+        "namespace": "diagnostic.r36sx-lab",
+        "set_id": "nes-laboratory",
+        "revision": 1
+      },
+      "content": {
+        "console_id": 7,
+        "method": "raw-sha256-v1",
+        "sha256": "d3e2e7b3f200dddd483904b91caa0baaa2970a3e413614cd4df9cfb9098b54ac"
+      },
+      "definition_sha256": "195dcf7bcdcaf21d626af8738bb4549162865cd6b51e8a836bd35bba388d72ee"
+    },
+    "generation": 2,
+    "events": [
+      {
+        "achievement_id": "1",
+        "event_id": "31a9622f1fd2f0c5f8b8a697f309eca6e9e0757b912e37409536f66e15253cb4",
+        "state": "unlocked",
+        "verification": "local-runtime",
+        "timestamp_status": "unknown"
+      },
+      {
+        "achievement_id": "2",
+        "event_id": "bd6aed0118d58a735f452e1cb29064a25d413c17b832d298df1eb38647057ef3",
+        "state": "unlocked",
+        "verification": "local-runtime",
+        "timestamp_status": "unknown"
+      },
+      {
+        "achievement_id": "3",
+        "event_id": "be418626bd8a81d19aaca371c0c9521da32e9842efa27bbc146c35344f115d9e",
+        "state": "unlocked",
+        "verification": "local-runtime",
+        "timestamp_status": "unknown"
+      },
+      {
+        "achievement_id": "4",
+        "event_id": "ef37313e17410182bf97b07390c2663b35895ef7002461f5cb68b5b40fcc6044",
+        "state": "unlocked",
+        "verification": "local-runtime",
+        "timestamp_status": "unknown"
+      },
+      {
+        "achievement_id": "5",
+        "event_id": "e9320e3bef6d677fc854ab0de8f05ad171eb3c247cc348540386eeceda7edf43",
+        "state": "unlocked",
+        "verification": "local-runtime",
+        "timestamp_status": "unknown"
+      },
+      {
+        "achievement_id": "6",
+        "event_id": "2f0c1c695e31b584ef0a14dfa9c8975df7b4664e5bceab1b03fb3afa6d85833c",
+        "state": "unlocked",
+        "verification": "local-runtime",
+        "timestamp_status": "unknown"
+      }
+    ]
+  },
+  "sha256": "934dc7b166601189eda7816dc4b48ac2e12c2374d7e73663608467ffa8a53773"
+}

@@ -1,0 +1,12 @@
+{
+  "roms/nes/Synthetic.nes": {
+    "platform": "nes",
+    "console_id": 1,
+    "game_id": 42,
+    "ra_hash": "0123456789abcdef0123456789abcdef",
+    "method": "rcheevos",
+    "size": 24592,
+    "mtime_ns": 1700000000000000000,
+    "runtime_ready": false
+  }
+}

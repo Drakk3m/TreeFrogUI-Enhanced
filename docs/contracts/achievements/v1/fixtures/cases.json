@@ -1,0 +1,193 @@
+[
+  {
+    "name": "locked",
+    "valid": true,
+    "replace": {},
+    "remove": [],
+    "expected_total": 0
+  },
+  {
+    "name": "partial",
+    "valid": true,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/partial/00-b.json"
+    },
+    "remove": [],
+    "expected_total": 2
+  },
+  {
+    "name": "full",
+    "valid": true,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/a.json": "cases/full/00-a.json",
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/full/01-b.json"
+    },
+    "remove": [],
+    "expected_total": 6
+  },
+  {
+    "name": "duplicate-across-slots",
+    "valid": true,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/a.json": "cases/duplicate-across-slots/00-a.json",
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/duplicate-across-slots/01-b.json"
+    },
+    "remove": [],
+    "expected_total": 2
+  },
+  {
+    "name": "no-progress-unknown",
+    "valid": true,
+    "replace": {},
+    "remove": [
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/a.json"
+    ],
+    "expected_total": 0
+  },
+  {
+    "name": "no-metadata",
+    "valid": true,
+    "replace": {},
+    "remove": [
+      "cubegm/enhanced/ra/metadata/v1/4ada71a3-fdad-4cbb-8fc9-a812f694ca1d/diagnostic.r36sx-lab/nes-laboratory/1.json"
+    ],
+    "expected_total": 0
+  },
+  {
+    "name": "duplicate-inside-slot",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/duplicate-inside-slot/00-b.json"
+    },
+    "remove": [],
+    "expected_error": "duplicate identifier"
+  },
+  {
+    "name": "unknown-version",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/definitions/v1/diagnostic.r36sx-lab/nes-laboratory/1/e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json": "cases/unknown-version/00-e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json"
+    },
+    "remove": [],
+    "expected_error": "schema"
+  },
+  {
+    "name": "invalid-condition",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/definitions/v1/diagnostic.r36sx-lab/nes-laboratory/1/e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json": "cases/invalid-condition/00-e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json",
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/447c2daf42400dda850bd95251957a5feba037b87cd8688e5466d8b10360956c/a.json": "cases/invalid-condition/01-a.json"
+    },
+    "remove": [
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/a.json"
+    ],
+    "expected_error": "approved capability subset"
+  },
+  {
+    "name": "out-of-provider",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/definitions/v1/diagnostic.r36sx-lab/nes-laboratory/1/e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json": "cases/out-of-provider/00-e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json",
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/5b5dc5dc593b3e53b3738ef4d27623fd59d4bd5b5f88af455e7b04e72e4f647d/a.json": "cases/out-of-provider/01-a.json"
+    },
+    "remove": [
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/a.json"
+    ],
+    "expected_error": "outside provider"
+  },
+  {
+    "name": "metadata-fingerprint-as-condition",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/definitions/v1/diagnostic.r36sx-lab/nes-laboratory/1/e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json": "cases/metadata-fingerprint-as-condition/00-e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json",
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/4868de5da8e72035e3a7dc3552fd8d1bb4a7b3c277741c1818e2082469b0fac8/a.json": "cases/metadata-fingerprint-as-condition/01-a.json"
+    },
+    "remove": [
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/a.json"
+    ],
+    "expected_error": "approved capability subset"
+  },
+  {
+    "name": "wrong-rom",
+    "valid": false,
+    "replace": {
+      "roms/FC/r36sx_achievement_lab.nes": "cases/wrong-rom/00-r36sx_achievement_lab.nes"
+    },
+    "remove": [],
+    "expected_error": "wrong ROM identity"
+  },
+  {
+    "name": "traversal",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/identities/v1/4ada71a3-fdad-4cbb-8fc9-a812f694ca1d/e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json": "cases/traversal/00-e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json"
+    },
+    "remove": [],
+    "expected_error": "unsafe path"
+  },
+  {
+    "name": "unknown-profile",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/0206e534-6b96-4cb5-a1fe-e9c0c351a789/1c6642123a8aa1d8da59dba952189d710db9ec1bc826734e2a64db94ff011d9d/a.json": "cases/unknown-profile/00-a.json"
+    },
+    "remove": [],
+    "expected_error": "unknown progress profile"
+  },
+  {
+    "name": "missing-definition",
+    "valid": false,
+    "replace": {},
+    "remove": [
+      "cubegm/enhanced/ra/definitions/v1/diagnostic.r36sx-lab/nes-laboratory/1/e44a52cac60a62382609cc403ce21258f849d44baa62b494e7147e74ed90d260.json"
+    ],
+    "expected_error": "missing definition"
+  },
+  {
+    "name": "revision-conflict",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/436d743bdc7bacef7d7ba23fe69796db52eb3acad24d84b7aa92f728b9eb2a14/a.json": "cases/revision-conflict/00-a.json"
+    },
+    "remove": [],
+    "expected_error": "revision/identity mismatch"
+  },
+  {
+    "name": "malformed-progress",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/malformed-progress/00-b.json"
+    },
+    "remove": [],
+    "expected_error": "Expecting"
+  },
+  {
+    "name": "bad-integrity",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/bad-integrity/00-b.json"
+    },
+    "remove": [],
+    "expected_error": "integrity mismatch"
+  },
+  {
+    "name": "invalid-clock",
+    "valid": false,
+    "replace": {
+      "cubegm/enhanced/ra/progress/v1/b191ee8d-2287-4ce2-82a7-7c6434c707c1/6b4336e6c5be87f63b2f2dec7aad3a07995bd655839ed0f278ff9a9026f1a7af/b.json": "cases/invalid-clock/00-b.json"
+    },
+    "remove": [],
+    "expected_error": "timestamp status mismatch"
+  },
+  {
+    "name": "second-game-uncompiled",
+    "valid": true,
+    "replace": {
+      "roms/FC/contract-second-game.nes": "cases/second-game-uncompiled/00-contract-second-game.nes",
+      "cubegm/enhanced/ra/identities/v1/7fd37121-c14c-4370-a205-7b3345ca5dc4/feeadabead1ffb9fc9c5760d3248e03001bfbff05f2a6aef353e56f0238d7669.json": "cases/second-game-uncompiled/01-feeadabead1ffb9fc9c5760d3248e03001bfbff05f2a6aef353e56f0238d7669.json",
+      "cubegm/enhanced/ra/definitions/v1/local.contract-test/extra-game/1/feeadabead1ffb9fc9c5760d3248e03001bfbff05f2a6aef353e56f0238d7669.json": "cases/second-game-uncompiled/02-feeadabead1ffb9fc9c5760d3248e03001bfbff05f2a6aef353e56f0238d7669.json"
+    },
+    "remove": [],
+    "expected_total": 0
+  }
+]
